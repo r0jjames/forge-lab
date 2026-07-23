@@ -51,3 +51,7 @@ agent-install: ## Install host-local Bamboo agent (needs AGENT_TOKEN)
 .PHONY: agent-run
 agent-run: ## Run host-local Bamboo agent in console mode
 	infra/agent/run-agent.sh
+
+.PHONY: specs-publish
+specs-publish: ## Publish all Bamboo Specs plans to the server
+	mvn -f bamboo-specs/pom.xml -q compile exec:java

@@ -9,6 +9,7 @@ provisioning/ansible/inventory/*.ini
 
 # Java / Maven
 bamboo-specs/target/
+bamboo-specs/.credentials
 
 # Local junk
 .DS_Store
