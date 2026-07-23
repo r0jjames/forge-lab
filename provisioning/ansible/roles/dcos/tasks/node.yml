@@ -1,0 +1,18 @@
+---
+- name: Node role — master on mgmt[0], slave elsewhere
+  ansible.builtin.set_fact:
+    dcos_node_role: "{{ 'master' if inventory_hostname == groups['mgmt'][0] else 'slave' }}"
+
+- name: Fetch install script from bootstrap
+  ansible.builtin.get_url:
+    url: "http://{{ hostvars[groups['mgmt'][0]].ansible_host }}:{{ dcos_bootstrap_port }}/dcos_install.sh"
+    dest: /tmp/dcos_install.sh
+    mode: "0755"
+  retries: 6
+  delay: 10
+  register: dcos_fetch
+  until: dcos_fetch is succeeded
+
+- name: Install DC/OS node
+  ansible.builtin.command: bash /tmp/dcos_install.sh {{ dcos_node_role }}
+  args: { creates: /opt/mesosphere/bin/mesos-master }

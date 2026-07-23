@@ -1,0 +1,44 @@
+---
+- name: Install docker.io (bootstrap needs it for genconf)
+  ansible.builtin.apt:
+    name: docker.io
+    state: present
+    update_cache: true
+
+- name: Bootstrap directory
+  ansible.builtin.file:
+    path: /opt/dcos-bootstrap/genconf
+    state: directory
+    mode: "0755"
+
+- name: Upload cached installer (fail fast if cache missing on host)
+  ansible.builtin.copy:
+    src: "{{ dcos_installer_local }}"
+    dest: /opt/dcos-bootstrap/dcos_generate_config.sh
+    mode: "0755"
+
+- name: Render config.yaml
+  ansible.builtin.template:
+    src: config.yaml.j2
+    dest: /opt/dcos-bootstrap/genconf/config.yaml
+    mode: "0644"
+
+- name: Render ip-detect
+  ansible.builtin.template:
+    src: ip-detect.j2
+    dest: /opt/dcos-bootstrap/genconf/ip-detect
+    mode: "0755"
+
+- name: Run genconf
+  ansible.builtin.command: bash dcos_generate_config.sh --genconf
+  args:
+    chdir: /opt/dcos-bootstrap
+    creates: /opt/dcos-bootstrap/genconf/serve/dcos_install.sh
+
+- name: Serve bootstrap artifacts
+  ansible.builtin.shell: |
+    docker rm -f dcos-bootstrap-nginx 2>/dev/null || true
+    docker run -d --name dcos-bootstrap-nginx --restart unless-stopped \
+      -p {{ dcos_bootstrap_port }}:80 \
+      -v /opt/dcos-bootstrap/genconf/serve:/usr/share/nginx/html:ro nginx
+  changed_when: true

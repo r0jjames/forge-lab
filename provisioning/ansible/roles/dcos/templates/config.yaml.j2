@@ -1,0 +1,9 @@
+---
+bootstrap_url: http://{{ hostvars[groups['mgmt'][0]].ansible_host }}:{{ dcos_bootstrap_port }}
+cluster_name: {{ cluster_name }}
+exhibitor_storage_backend: static
+master_discovery: static
+master_list:
+  - {{ hostvars[groups['mgmt'][0]].ansible_host }}
+resolvers:
+  - 8.8.8.8
