@@ -133,12 +133,51 @@ Plan variable: `cluster_name`.
 
 ## 9. Definition of Done (v1)
 
-- [ ] `make up` → Bamboo UI on localhost, agent online
-- [ ] Provision `lab1` (tfvars-driven sizing) with `k8s` → 3 nodes Ready
-- [ ] Same with `dcos` → UI reachable
-- [ ] Deprovision `lab1` → zero VMs, state, or inventory left
-- [ ] Fresh-machine bring-up < 1h from README alone
-- [ ] Backend swap boundary documented (multipass module)
+- [ ] `make up` → Bamboo UI on localhost, agent online — **PENDING HUMAN**:
+      Postgres + Bamboo Helm bring-up is live-proven on Rancher Desktop ns
+      `ci` (`ingress.https: false` required for plain-HTTP port-forward,
+      already committed/commented in bamboo-values), but the setup wizard,
+      timebomb license application, and agent registration (needs
+      `AGENT_TOKEN` minted from the post-wizard UI) all require a human at
+      the browser. Agent install/run scripts are ready and untested live.
+- [x] Provision `lab1` (tfvars-driven sizing) with `k8s` → 3 nodes Ready —
+      **LIVE PROVEN**: `make provision CLUSTER=lab1 TYPE=k8s` reaches 3
+      `Ready` nodes in ~4.5 min (Task 11). Required one live-run fix: Ansible
+      `shell` tasks using `set -o pipefail` need `executable: /bin/bash`
+      (dash rejects the flag) — fixed in the k8s role's containerd-config
+      task.
+- [ ] Same with `dcos` → UI reachable — **BLOCKED, deterministic, not
+      transient**: the `dcos` role is static-complete and ansible-lint-clean
+      (Task 13), and the pinned installer (2.0.3; 2.2.13 is a dead link,
+      returns 403) downloads and caches correctly at
+      `~/.forgelab/cache/dcos_generate_config.sh` (~967MB). Live install
+      fails at the `genconf` step with `exec format error`: DC/OS 2.x's
+      `genconf` Docker image is amd64-only, and this host (and any
+      Apple Silicon Mac) is arm64. Not fixable within this repo — requires
+      real amd64 hardware. Known open design risk noted alongside this:
+      port 8080 double-use on mgmt[0] (bootstrap nginx vs Marathon) is
+      untested and amd64-only-hardware-only to verify.
+- [x] Deprovision `lab1` → zero VMs, state, or inventory left — **LIVE
+      PROVEN**: `make deprovision CLUSTER=lab1` cleans Terraform state,
+      sweeps stray VMs, and removes the generated inventory; confirmed
+      idempotent (safe to run twice) and confirmed unrelated pre-existing
+      VMs (`tf-*`) are left untouched by the backend sweep (Task 12).
+- [ ] Fresh-machine bring-up < 1h from README alone — **PENDING HUMAN**: the
+      code-defined path (`make setup` → `make up` → `make provision` →
+      `make deprovision`) is live-proven end to end for k8s and is fast
+      (~4.5 min for provision alone); the < 1h estimate holds for the
+      scripted portions. What remains unverified end-to-end on a genuinely
+      fresh machine is the manual, one-time human portion: Bamboo setup
+      wizard, timebomb license paste, `AGENT_TOKEN` mint + agent install,
+      Specs `.credentials` file, and the Linked Repository registration —
+      all now documented step-by-step in the README's Quick start.
+- [x] Backend swap boundary documented (multipass module) — true: the root
+      Terraform module's fixed contract (cluster_name + node specs in →
+      node IPs + rendered inventory out) delegating to
+      `provisioning/terraform/modules/multipass/` is documented in both the
+      README ("VM backend swap boundary") and this design doc (§3, D7);
+      Ansible only ever consumes the generated inventory and the
+      deprovision sweep step is backend-scoped.
 
 ## 10. Risks
 

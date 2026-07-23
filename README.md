@@ -81,18 +81,32 @@ Install on the Mac host before starting:
 - **multipass** — creates the local VMs pipelines target.
 - **jq** — used by scripts to parse JSON (Terraform output, `multipass list --format json`, etc).
 - **JDK 17 + maven** — builds and validates Bamboo Specs (`bamboo-specs/`).
-- **shellcheck** — lints `provisioning/scripts/*.sh` (part of `make lint`).
+- **shellcheck** and **ansible-lint** — static checks, both part of `make lint`.
 
 Quick check that everything is on `PATH`:
 
 ```bash
-for bin in kubectl helm terraform ansible multipass jq mvn shellcheck; do
+for bin in kubectl helm terraform ansible ansible-lint multipass jq mvn shellcheck; do
   command -v "$bin" >/dev/null || echo "MISSING: $bin"
 done
 java -version   # expect 17.x
 ```
 
 Rancher Desktop must be **running** (with Kubernetes enabled) before `make up`.
+
+**ansible-galaxy collections (one-time, needed for `make lint`)** — if
+`ansible-lint` was installed via Homebrew, it runs in its own isolated venv
+and does *not* see the collections bundled inside Homebrew's `ansible`
+formula, even though `ansible-playbook` finds them fine. This surfaces as
+`unknown-module: community.general.modprobe` (or `ansible.posix.sysctl`)
+from `ansible-lint` alone. Fix once, for both tools:
+
+```bash
+ansible-galaxy collection install community.general ansible.posix
+```
+
+This installs into `~/.ansible/collections/`, the shared default path both
+Homebrew `ansible-lint` and `ansible-playbook` search.
 
 ## Quick start
 
@@ -114,17 +128,44 @@ make ui
 Then, once Bamboo is licensed and reachable:
 
 ```bash
-# 4. Install and start the host-local Bamboo agent
+# 4. Get an agent token, then install and start the host-local Bamboo agent
+#    Bamboo UI → Administration → Agents → "Install remote agent" shows the
+#    token; export it before running install-agent.sh:
+export AGENT_TOKEN=<token from the UI>
 make agent-install
 make agent-run
+```
 
-# 5. Publish the hello-world Bamboo Specs plan to prove the Specs → server
-#    publish loop works end to end
+Leave `make agent-run` running in its own terminal (or under `launchd` —
+see `infra/agent/run-agent.sh`); it needs to stay up for plans to build.
+
+Before publishing Specs, two one-time Bamboo UI steps are required (both
+persist in the `bamboo-home` PVC, so this is genuinely one-time per
+install):
+
+1. **Specs credentials** — `bamboo-specs/.credentials` is gitignored and
+   not created for you. Bamboo Specs authenticates via a personal access
+   token; create one in the Bamboo UI (profile → Personal Access Tokens),
+   then write it as a Java properties file:
+   ```bash
+   echo "token=<your PAT>" > bamboo-specs/.credentials
+   ```
+   (`exec:java`'s working directory is the `bamboo-specs/` module root, so
+   the file must live there, not at the repo root.)
+2. **Linked repository** — Administration → Linked Repositories → add
+   `git@github.com:r0jjames/forge-lab.git`. All three specs
+   (`HelloWorldSpec`, `ProvisionClusterSpec`, `DeprovisionClusterSpec`) call
+   `defaultRepository()`, which resolves against this linked repo by name —
+   publish fails without it.
+
+```bash
+# 5. Publish all Bamboo Specs plans, proving the Specs → server publish
+#    loop works end to end
 make specs-publish
 ```
 
 At this point you have a licensed Bamboo server, a connected local agent, and
-a published plan — the CI up (Phase 1) definition of done. Provisioning a
+published plans — the CI up (Phase 1) definition of done. Provisioning a
 cluster (Phase 2+) is covered next.
 
 ## Pipeline usage
@@ -152,6 +193,37 @@ Bamboo `ProvisionClusterPlan`, since both call the same
    cached locally.
 4. **Verify** — k8s: all nodes reach `Ready`. dcos: UI health endpoint
    responds OK. The pipeline fails if verification doesn't pass.
+
+### DC/OS: installer cache and the Apple Silicon blocker
+
+DC/OS installs use a pinned installer version, downloaded once and cached
+at `~/.forgelab/cache/dcos_generate_config.sh` (`~967MB`; the role's
+`dcos_installer_local` default). Fetch it manually before a first dcos run,
+or just let the role's bootstrap task fetch/cache it on demand:
+
+```bash
+mkdir -p ~/.forgelab/cache
+curl -fSL -o ~/.forgelab/cache/dcos_generate_config.sh \
+  https://downloads.dcos.io/dcos/stable/2.0.3/dcos_generate_config.sh
+```
+
+The role is pinned to **2.0.3**, not the newer 2.2.13 line — `2.2.13`
+returns `403 Forbidden` from `downloads.dcos.io` (dead link), while `2.0.3`
+is confirmed available and downloads cleanly.
+
+**Known blocker — DC/OS does not run on Apple Silicon (arm64) hosts.** The
+DC/OS 2.x `genconf` step runs an amd64-only Docker image; on an arm64 host
+(any M-series Mac) it fails deterministically during install:
+
+```
+exec /installer_internal_wrapper: exec format error
+```
+
+This is an architecture mismatch, not a flaky failure — retrying reproduces
+the identical error every time. The `dcos` Ansible role itself is
+static-complete and lint-clean; a live `dcos` install requires genuine
+amd64 hardware (or an amd64 VM/emulation layer outside this lab's scope).
+`k8s` is unaffected and is the recommended path on Apple Silicon hosts.
 
 ### Deprovisioning a cluster
 
@@ -254,6 +326,32 @@ Confirm Rancher Desktop's Kubernetes is actually running (`kubectl get
 nodes`), then check pod status in the `ci` namespace
 (`kubectl -n ci get pods`) — Postgres or Bamboo may still be starting up;
 give it a minute and check `kubectl -n ci logs` on the slow pod.
+
+**`ansible-lint` fails with `unknown-module: community.general....`**
+See "ansible-galaxy collections" under Prerequisites — Homebrew's
+`ansible-lint` doesn't see collections bundled inside Homebrew's `ansible`
+formula. `ansible-galaxy collection install community.general
+ansible.posix` fixes it for both tools.
+
+**`specs-publish` fails with `Couldn't find credentials file: .credentials`**
+`bamboo-specs/.credentials` doesn't exist yet — see "Specs credentials" in
+Quick start step 4. If it fails instead with a repository/`defaultRepository`
+error, the Linked Repository step (same section) hasn't been done in the
+Bamboo UI yet.
+
+**Writing new Ansible `shell` tasks that pipe commands**
+`ansible.builtin.shell` runs under `/bin/sh` (dash on Ubuntu) unless told
+otherwise, and dash rejects bash-only syntax like `set -o pipefail`. Any
+shell task relying on `set -eo pipefail` (or other bashisms) needs an
+explicit `args: { executable: /bin/bash }` — this bit the `k8s` role's
+containerd-config task live once already (fixed); keep it in mind if you
+extend the roles.
+
+**DC/OS install fails with `exec /installer_internal_wrapper: exec format
+error`**
+Expected on Apple Silicon — see "DC/OS: installer cache and the Apple
+Silicon blocker" above. Not fixable from this repo; use `k8s` instead, or
+run on amd64 hardware.
 
 ## Repository layout
 

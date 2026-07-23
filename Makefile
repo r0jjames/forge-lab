@@ -69,3 +69,12 @@ provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos]
 deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
 	provisioning/scripts/deprovision.sh $(CLUSTER)
+
+.PHONY: lint
+lint: ## All static checks
+	shellcheck infra/scripts/*.sh infra/agent/*.sh provisioning/scripts/*.sh
+	terraform -chdir=provisioning/terraform fmt -check -recursive
+	terraform -chdir=provisioning/terraform init -backend=false -input=false >/dev/null
+	terraform -chdir=provisioning/terraform validate
+	cd provisioning/ansible && ansible-lint
+	mvn -f bamboo-specs/pom.xml -q test
