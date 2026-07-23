@@ -1,6 +1,7 @@
 SHELL := /bin/bash
 CLUSTER ?=
 TYPE ?=
+SPEC_CLASSES := lab.plans.HelloWorldSpec
 
 .DEFAULT_GOAL := help
 
@@ -54,4 +55,7 @@ agent-run: ## Run host-local Bamboo agent in console mode
 
 .PHONY: specs-publish
 specs-publish: ## Publish all Bamboo Specs plans to the server
-	mvn -f bamboo-specs/pom.xml -q compile exec:java
+	@for c in $(SPEC_CLASSES); do \
+	  echo "==> publishing $$c"; \
+	  mvn -f bamboo-specs/pom.xml -q compile exec:java -Dexec.mainClass=$$c || exit 1; \
+	done
