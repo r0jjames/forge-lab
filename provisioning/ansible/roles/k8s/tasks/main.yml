@@ -1,1 +1,11 @@
 ---
+- name: Install container runtime and kube packages
+  ansible.builtin.import_tasks: runtime.yml
+
+- name: Initialize control plane
+  ansible.builtin.import_tasks: init.yml
+  when: inventory_hostname == groups['mgmt'][0]
+
+- name: Join worker to cluster
+  ansible.builtin.import_tasks: join.yml
+  when: inventory_hostname != groups['mgmt'][0]

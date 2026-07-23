@@ -1,0 +1,42 @@
+---
+- name: Install containerd
+  ansible.builtin.apt:
+    name: containerd
+    state: present
+    update_cache: true
+
+- name: Default containerd config with systemd cgroups
+  ansible.builtin.shell: |
+    set -eo pipefail
+    mkdir -p /etc/containerd
+    containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' > /etc/containerd/config.toml
+  args: { creates: /etc/containerd/config.toml }
+
+- name: Restart containerd
+  ansible.builtin.systemd:
+    name: containerd
+    state: restarted
+    enabled: true
+
+- name: Kubernetes apt key
+  ansible.builtin.get_url:
+    url: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/Release.key"
+    dest: /etc/apt/keyrings/kubernetes.asc
+    mode: "0644"
+
+- name: Kubernetes apt repo
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes.asc] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+    state: present
+
+- name: Install kubeadm/kubelet/kubectl
+  ansible.builtin.apt:
+    name: [kubeadm, kubelet, kubectl]
+    state: present
+    update_cache: true
+
+- name: Hold kube packages
+  ansible.builtin.dpkg_selections:
+    name: "{{ item }}"
+    selection: hold
+  loop: [kubeadm, kubelet, kubectl]
