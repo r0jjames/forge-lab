@@ -15,13 +15,13 @@ case "$TYPE" in
   k8s)
     echo "==> verify: waiting for all nodes Ready (timeout 300s)"
     for _ in $(seq 1 30); do
-      if $SSH "kubectl get nodes --no-headers" 2>/dev/null \
-         | awk '{print $2}' | grep -qv '^Ready$'; then
-        sleep 10
-      else
-        $SSH "kubectl get nodes"
-        exit 0
+      if OUT=$($SSH "kubectl get nodes --no-headers" 2>/dev/null); then
+        if [ -n "$OUT" ] && ! printf '%s\n' "$OUT" | awk '{print $2}' | grep -qv '^Ready$'; then
+          printf '%s\n' "$OUT"
+          exit 0
+        fi
       fi
+      sleep 10
     done
     die "nodes not all Ready within timeout"
     ;;
