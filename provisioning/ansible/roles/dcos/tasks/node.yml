@@ -15,4 +15,5 @@
 
 - name: Install DC/OS node
   ansible.builtin.command: bash /tmp/dcos_install.sh {{ dcos_node_role }}
-  args: { creates: /opt/mesosphere/bin/mesos-master }
+  args:
+    creates: "{{ '/opt/mesosphere/bin/mesos-master' if dcos_node_role == 'master' else '/opt/mesosphere/bin/mesos-agent' }}"
