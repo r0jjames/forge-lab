@@ -39,3 +39,7 @@ status: ## Pods in ns ci
 .PHONY: ui
 ui: ## Port-forward Bamboo to localhost:8085
 	kubectl -n ci port-forward svc/bamboo 8085:80
+
+.PHONY: relicense
+relicense: ## Open timebomb key page + Bamboo license admin
+	infra/scripts/relicense.sh
