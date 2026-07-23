@@ -64,3 +64,8 @@ specs-publish: ## Publish all Bamboo Specs plans to the server
 provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
 	provisioning/scripts/provision.sh $(CLUSTER) $(TYPE)
+
+.PHONY: deprovision
+deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
+	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
+	provisioning/scripts/deprovision.sh $(CLUSTER)
