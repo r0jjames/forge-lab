@@ -1,0 +1,15 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.lock.hcl
+
+# Generated inventories
+provisioning/ansible/inventory/*.ini
+
+# Java / Maven
+bamboo-specs/target/
+
+# Local junk
+.DS_Store
+*.retry
