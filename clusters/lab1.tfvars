@@ -1,0 +1,9 @@
+cluster_type  = "k8s"
+mgmt_count    = 1
+compute_count = 2
+mgmt_cpu      = 2
+mgmt_mem      = "4G"
+mgmt_disk     = "20G"
+compute_cpu   = 2
+compute_mem   = "3G"
+compute_disk  = "20G"
