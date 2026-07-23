@@ -1,4 +1,13 @@
 replicaCount: 1
+# ingress is not created (no controller in this local lab); access is via
+# `make ui` -> kubectl port-forward, which is plain HTTP. The chart defaults
+# ingress.https to true even when ingress.create is false, which makes Bamboo
+# assume it's behind a TLS-terminating proxy and emit https:// redirects —
+# breaking both the readiness probe and browser access over a plain
+# port-forward. Chart's own values.yaml comment: "Set to 'false' if not using
+# TLS, e.g. when reaching the service via localhost port-forwarding."
+ingress:
+  https: false
 bamboo:
   resources:
     container:
