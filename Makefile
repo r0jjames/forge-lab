@@ -43,3 +43,11 @@ ui: ## Port-forward Bamboo to localhost:8085
 .PHONY: relicense
 relicense: ## Open timebomb key page + Bamboo license admin
 	infra/scripts/relicense.sh
+
+.PHONY: agent-install
+agent-install: ## Install host-local Bamboo agent (needs AGENT_TOKEN)
+	infra/agent/install-agent.sh
+
+.PHONY: agent-run
+agent-run: ## Run host-local Bamboo agent in console mode
+	infra/agent/run-agent.sh
