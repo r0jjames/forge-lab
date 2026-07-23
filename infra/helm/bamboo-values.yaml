@@ -1,0 +1,18 @@
+replicaCount: 1
+bamboo:
+  resources:
+    container:
+      requests: { cpu: "1", memory: 3Gi }
+      limits: { cpu: "2", memory: 4Gi }
+database:
+  type: postgresql
+  url: jdbc:postgresql://postgres-postgresql.ci.svc.cluster.local:5432/bamboo
+  credentials:
+    secretName: bamboo-db-creds
+volumes:
+  localHome:
+    persistentVolumeClaim:
+      create: true
+      resources:
+        requests:
+          storage: 5Gi

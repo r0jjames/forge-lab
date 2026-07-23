@@ -1,0 +1,11 @@
+auth:
+  username: bamboo
+  database: bamboo
+  existingSecret: bamboo-db-creds
+  secretKeys:
+    userPasswordKey: password
+primary:
+  persistence:
+    size: 5Gi
+  resources:
+    requests: { cpu: 250m, memory: 512Mi }
