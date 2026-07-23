@@ -1,0 +1,20 @@
+---
+- name: Base preparation (all nodes)
+  hosts: all
+  become: true
+  roles:
+    - common
+
+- name: Kubernetes install
+  hosts: all
+  become: true
+  roles:
+    - role: k8s
+      when: cluster_type == "k8s"
+
+- name: DC/OS install
+  hosts: all
+  become: true
+  roles:
+    - role: dcos
+      when: cluster_type == "dcos"
