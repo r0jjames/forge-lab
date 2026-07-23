@@ -2,7 +2,6 @@
 **/.terraform/
 *.tfstate
 *.tfstate.*
-.terraform.lock.hcl
 provisioning/terraform/.generated/
 
 # Generated inventories

@@ -6,11 +6,21 @@ AGENT_DIR="$HOME/.forgelab/agent"
 : "${AGENT_TOKEN:?Set AGENT_TOKEN (Bamboo admin > Agents > Install remote agent)}"
 
 mkdir -p "$AGENT_DIR"
+
+# Auth for the admin page + jar download: real Bamboo redirects anonymous
+# requests to login, so support token or basic auth. BAMBOO_TOKEN wins if set.
+CURL_AUTH=()
+if [ -n "${BAMBOO_TOKEN:-}" ]; then
+  CURL_AUTH=(-H "Authorization: Bearer ${BAMBOO_TOKEN}")
+elif [ -n "${BAMBOO_USER:-}" ]; then
+  CURL_AUTH=(-u "${BAMBOO_USER}:${BAMBOO_PASS:-}")
+fi
+
 # Server serves the matching installer jar; version-agnostic scrape of the admin page link:
-JAR_PATH=$(curl -fsS "${BAMBOO_URL}/admin/agent/addRemoteAgent.action" \
+JAR_PATH=$(curl -fsS "${CURL_AUTH[@]+"${CURL_AUTH[@]}"}" "${BAMBOO_URL}/admin/agent/addRemoteAgent.action" \
   | grep -oE 'agentServer/agentInstaller/atlassian-bamboo-agent-installer-[0-9.]+\.jar' \
-  | head -1) || { echo "Could not discover installer jar; check BAMBOO_URL / login"; exit 1; }
-curl -fSLo "$AGENT_DIR/agent-installer.jar" "${BAMBOO_URL}/${JAR_PATH}"
+  | head -1) || { echo "Could not discover installer jar; check BAMBOO_URL / login, or set BAMBOO_USER/BAMBOO_PASS or BAMBOO_TOKEN"; exit 1; }
+curl -fSLo "$AGENT_DIR/agent-installer.jar" "${CURL_AUTH[@]+"${CURL_AUTH[@]}"}" "${BAMBOO_URL}/${JAR_PATH}"
 java -jar "$AGENT_DIR/agent-installer.jar" \
   "${BAMBOO_URL}/agentServer/" install -t "${AGENT_TOKEN}" --home "$AGENT_HOME"
 echo "Installed. Run: make agent-run"

@@ -24,8 +24,8 @@ setup: ## One-time: namespace, db secret, ssh keypair, helm repos
 
 .PHONY: up
 up: ## Install/upgrade Postgres + Bamboo into ns ci
-	helm upgrade --install postgres bitnami/postgresql -n ci -f infra/helm/postgres-values.yaml
-	helm upgrade --install bamboo atlassian-data-center/bamboo -n ci -f infra/helm/bamboo-values.yaml
+	helm upgrade --install postgres bitnami/postgresql -n ci -f infra/helm/postgres-values.yaml --version 18.8.0
+	helm upgrade --install bamboo atlassian-data-center/bamboo -n ci -f infra/helm/bamboo-values.yaml --version 2.0.14
 	@echo "Run 'make ui' then open http://localhost:8085 (first boot: paste timebomb license in wizard)"
 
 .PHONY: down

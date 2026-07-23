@@ -16,11 +16,13 @@ if multipass list --format json | jq -e --arg p "${CLUSTER}-" \
 fi
 TFVARS="$(resolve_tfvars "$CLUSTER")"
 if [ -n "$TYPE_OVERRIDE" ]; then
-  [[ "$TYPE_OVERRIDE" =~ ^(k8s|dcos)$ ]] || die "cluster_type must be k8s or dcos"
   CLUSTER_TYPE="$TYPE_OVERRIDE"
+  TYPE_SOURCE="the TYPE override"
 else
   CLUSTER_TYPE="$(awk -F'"' '/^cluster_type/ {print $2}' "$TFVARS")"
+  TYPE_SOURCE="$TFVARS"
 fi
+[[ "$CLUSTER_TYPE" =~ ^(k8s|dcos)$ ]] || die "cluster_type must be k8s or dcos (got '$CLUSTER_TYPE' from $TYPE_SOURCE)"
 echo "==> provisioning '$CLUSTER' type=$CLUSTER_TYPE config=$(basename "$TFVARS")"
 
 ### Stage 2: Provision (workspace per cluster, tfvars-driven)

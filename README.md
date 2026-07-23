@@ -136,6 +136,11 @@ make agent-install
 make agent-run
 ```
 
+`install-agent.sh` scrapes the admin agent-install page, which real Bamboo
+redirects to login for anonymous requests. If your instance isn't allowing
+anonymous access, set `BAMBOO_USER`/`BAMBOO_PASS` (basic auth) or
+`BAMBOO_TOKEN` (Bearer, takes precedence) before running `make agent-install`.
+
 Leave `make agent-run` running in its own terminal (or under `launchd` —
 see `infra/agent/run-agent.sh`); it needs to stay up for plans to build.
 
@@ -362,8 +367,7 @@ forge-lab/
 ├── Makefile                        # up / down / provision / deprovision / relicense / lint
 ├── infra/
 │   ├── helm/                       # Bamboo + Postgres chart values
-│   ├── agent/                      # host-local agent install/run scripts
-│   └── README.md                   # bring-up runbook detail
+│   └── agent/                      # host-local agent install/run scripts
 ├── bamboo-specs/                   # Java + Maven (Bamboo Specs plans-as-code)
 ├── clusters/                       # per-cluster tfvars (+ defaults.tfvars)
 ├── provisioning/
