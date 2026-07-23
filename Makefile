@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 CLUSTER ?=
 TYPE ?=
-SPEC_CLASSES := lab.plans.HelloWorldSpec
+SPEC_CLASSES := lab.plans.HelloWorldSpec lab.plans.ProvisionClusterSpec lab.plans.DeprovisionClusterSpec
 
 .DEFAULT_GOAL := help
 
