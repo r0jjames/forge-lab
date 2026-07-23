@@ -10,7 +10,7 @@
     set -eo pipefail
     mkdir -p /etc/containerd
     containerd config default | sed 's/SystemdCgroup = false/SystemdCgroup = true/' > /etc/containerd/config.toml
-  args: { creates: /etc/containerd/config.toml }
+  args: { creates: /etc/containerd/config.toml, executable: /bin/bash }
 
 - name: Restart containerd
   ansible.builtin.systemd:
