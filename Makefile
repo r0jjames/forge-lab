@@ -33,13 +33,29 @@ down: ## Uninstall CI stack (PVCs survive)
 	helm uninstall bamboo -n ci || true
 	helm uninstall postgres -n ci || true
 
+.PHONY: reset
+reset: ## DESTRUCTIVE: wipe Bamboo state (PVCs + DB) and reinstall clean
+	@echo "This deletes Bamboo local-home, shared-home, and the bamboo database."
+	@echo "Plans are safe (re-publish with 'make specs-publish'). Ctrl-C to abort."
+	@read -p "Type 'wipe' to continue: " a; [ "$$a" = wipe ] || (echo aborted; exit 1)
+	helm uninstall bamboo -n ci || true
+	kubectl -n ci wait --for=delete pod/bamboo-0 --timeout=120s || true
+	kubectl -n ci delete pvc local-home-bamboo-0 bamboo-shared-home --ignore-not-found
+	@pw=$$(kubectl -n ci get secret bamboo-db-creds -o jsonpath='{.data.password}' | base64 -d); \
+	  kubectl -n ci exec postgres-postgresql-0 -- env PGPASSWORD="$$pw" \
+	    psql -U bamboo -d postgres \
+	    -c "DROP DATABASE IF EXISTS bamboo WITH (FORCE);" \
+	    -c "CREATE DATABASE bamboo OWNER bamboo;"
+	helm upgrade --install bamboo atlassian-data-center/bamboo -n ci -f infra/helm/bamboo-values.yaml --version 2.0.14
+	@echo "Reset done. 'make ui', open http://localhost:8085, redo wizard + 'make license'."
+
 .PHONY: status
 status: ## Pods in ns ci
 	kubectl -n ci get pods,pvc,svc
 
 .PHONY: ui
-ui: ## Port-forward Bamboo to localhost:8085
-	kubectl -n ci port-forward svc/bamboo 8085:80
+ui: ## Port-forward Bamboo UI (8085) + agent JMS broker (54663)
+	kubectl -n ci port-forward pod/bamboo-0 8085:8085 54663:54663
 
 .PHONY: license
 license: ## Fetch + copy the 24h Bamboo timebomb key (for the setup wizard)

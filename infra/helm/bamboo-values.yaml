@@ -9,6 +9,13 @@ replicaCount: 1
 ingress:
   https: false
 bamboo:
+  # Broker URL advertised to remote agents. By default Bamboo hands agents the
+  # in-cluster pod FQDN (bamboo-0.bamboo.ci.svc.cluster.local:54663), which a
+  # host-local agent cannot resolve or reach. Point it at localhost so the
+  # agent connects through the `make ui` port-forward of the JMS port (54663).
+  # verifyHostName=false because the broker's TLS cert isn't issued for
+  # "localhost"; the agent still trusts it via the fingerprint exchange.
+  brokerUrl: "ssl://localhost:54663?socket.verifyHostName=false&wireFormat.maxInactivityDuration=90000"
   resources:
     container:
       requests: { cpu: "1", memory: 3Gi }
@@ -22,6 +29,20 @@ volumes:
   localHome:
     persistentVolumeClaim:
       create: true
+      resources:
+        requests:
+          storage: 5Gi
+  # Without this the chart mounts shared-home as an emptyDir, so the
+  # bamboo-shared.cfg.xml written during the setup wizard is lost on any pod
+  # restart — bootstrap then fails with "Shared configuration ... does not
+  # exist". accessModes is forced to ReadWriteOnce because the local-path
+  # storageclass (Rancher Desktop default) is RWO-only; the chart default of
+  # ReadWriteMany leaves the PVC Pending. Single-node lab, so RWO is fine.
+  sharedHome:
+    persistentVolumeClaim:
+      create: true
+      accessModes:
+        - ReadWriteOnce
       resources:
         requests:
           storage: 5Gi

@@ -6,6 +6,9 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 ## Commands
 
 - `make up` / `make down` — CI stack (Bamboo + Postgres) on namespace `ci`
+  (`down` keeps PVCs). `make reset` — DESTRUCTIVE: wipe Bamboo PVCs + DB and
+  reinstall clean; use when boot fails with "Shared configuration ... does not
+  exist" (stale DB vs empty shared-home)
 - `make ui` — port-forward Bamboo to http://localhost:8085
 - `make license` — fetch + clipboard-copy the 24h timebomb key (setup wizard)
 - `make relicense` — fetch + copy key and open license admin page (after expiry)
