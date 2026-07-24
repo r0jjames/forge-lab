@@ -16,7 +16,7 @@ clicked together by hand.
 
 - **CI engine:** Bamboo Data Center, running in the local Rancher Desktop
   Kubernetes cluster, licensed with a free 24h "timebomb" testing key
-  (re-applied each session via `make relicense`).
+  (fetched via `make license`, re-applied each session via `make relicense`).
 - **Pipelines as code:** Bamboo Specs (Java + Maven) define the plans;
   `mvn test` validates them offline before publish.
 - **CI-agnostic core:** all real provisioning logic lives in
@@ -120,7 +120,9 @@ make setup
 #    Rancher Desktop's Kubernetes
 make up
 
-# 3. Apply the timebomb license (see "License ritual" below), then open the UI
+# 3. Grab the 24h timebomb license key (copied to your clipboard), then open
+#    the UI and paste it into the setup wizard (see "License ritual" below)
+make license
 make ui
 # → http://localhost:8085
 ```
@@ -271,7 +273,9 @@ not an official free tier, and the key **expires 24 hours after
 installation**.
 
 - **What:** a timebomb license key from developer.atlassian.com ("Timebomb
-  licenses for testing server apps").
+  licenses for testing server apps"). You don't have to hunt for it —
+  `make license` fetches the current key straight off that page and copies
+  it to your clipboard.
 - **Where:** pasted into Bamboo's license admin screen on first setup, and
   re-applied there whenever it expires. The `bamboo-home` PVC persists
   everything else (plans, specs, configuration) across relicensing — only
@@ -279,8 +283,15 @@ installation**.
 - **Expiry:** 24 hours after each application. When it lapses, Bamboo
   refuses to run builds until relicensed; the agent stays connected and
   reconnects unaffected once you're relicensed.
-- **Ritual:** run `make relicense` — opens the license admin page (or hits
-  the license REST endpoint) so you can paste the same key back in.
+- **First-time setup wizard:** run `make license` — it prints the key and
+  copies it to your clipboard; paste it into the wizard's license field.
+- **After expiry:** run `make relicense` — fetches + copies the current key
+  **and** opens Bamboo's license admin page so you can paste and save.
+
+Both commands wrap `infra/scripts/get-license.sh`, which scrapes the Bamboo
+Data Center 24h key from the Atlassian developer page (needs `curl` +
+`python3`, both stock on macOS). Override `LICENSE_LABEL` to pull a
+different published key.
 
 Context: the entire Bamboo Data Center product line sunsets, with all DC
 licenses expiring March 2029. The CI-agnostic core (see Architecture) means
@@ -308,9 +319,17 @@ To add a different backend (UTM, libvirt, etc.) later:
 ## Troubleshooting
 
 **License expired mid-session**
-Builds refuse to start; nothing else is affected. Run `make relicense`,
-paste the same timebomb key back in. The agent stays connected/reconnects
-on its own — no need to restart it.
+Builds refuse to start; nothing else is affected. Run `make relicense` — it
+re-fetches the current timebomb key, copies it to your clipboard, and opens
+the license admin page to paste it. The agent stays connected/reconnects on
+its own — no need to restart it.
+
+**`make license` prints nothing / errors**
+It scrapes the live Atlassian developer page, so it needs network access plus
+`curl` and `python3`. If Atlassian renames the license block, override the
+label: `LICENSE_LABEL='10 user Bamboo Data Center license, expires in 24 hours' make license`.
+As a fallback, open the page yourself (printed in the error) and copy the
+"Bamboo Data Center" key by hand.
 
 **Multipass flakes / provider errors**
 The community-maintained Multipass Terraform provider is known to be a bit

@@ -41,8 +41,16 @@ status: ## Pods in ns ci
 ui: ## Port-forward Bamboo to localhost:8085
 	kubectl -n ci port-forward svc/bamboo 8085:80
 
+.PHONY: license
+license: ## Fetch + copy the 24h Bamboo timebomb key (for the setup wizard)
+	@key="$$(infra/scripts/get-license.sh)" || exit 1; \
+	  printf '%s\n\n' "$$key"; \
+	  if command -v pbcopy >/dev/null; then printf '%s' "$$key" | pbcopy; \
+	    echo "(copied to clipboard — paste into the Bamboo setup wizard license field)"; \
+	  fi
+
 .PHONY: relicense
-relicense: ## Open timebomb key page + Bamboo license admin
+relicense: ## Fetch + copy the 24h key and open Bamboo license admin (after expiry)
 	infra/scripts/relicense.sh
 
 .PHONY: agent-install
