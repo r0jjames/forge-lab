@@ -132,19 +132,27 @@ Then, once Bamboo is licensed and reachable:
 ```bash
 # 4. Get an agent token, then install and start the host-local Bamboo agent
 #    Bamboo UI → Administration → Agents → "Install remote agent" shows the
-#    token; export it before running install-agent.sh:
+#    token (enable "security token verification" there first if prompted);
+#    export it before running install-agent.sh:
 export AGENT_TOKEN=<token from the UI>
 make agent-install
 make agent-run
 ```
 
-`install-agent.sh` scrapes the admin agent-install page, which real Bamboo
-redirects to login for anonymous requests. If your instance isn't allowing
-anonymous access, set `BAMBOO_USER`/`BAMBOO_PASS` (basic auth) or
-`BAMBOO_TOKEN` (Bearer, takes precedence) before running `make agent-install`.
+`install-agent.sh` copies the installer jar straight out of the Bamboo
+server pod with `kubectl cp` (the jar isn't downloadable without an admin
+login, but it's right there in the pod), then runs it against
+`/agentServer/` with your token. Overridable via `BAMBOO_NAMESPACE`
+(default `ci`) and `BAMBOO_CONTAINER` (default `bamboo`); needs `kubectl`
+(Rancher Desktop provides it) and a JDK on `PATH`.
 
 Leave `make agent-run` running in its own terminal (or under `launchd` —
 see `infra/agent/run-agent.sh`); it needs to stay up for plans to build.
+
+With security token verification enabled, a freshly started agent registers
+but stays **pending until you approve it**: Administration → Agents →
+Agent authentication → approve the new UUID (the agent log prints the exact
+approval URL). Until then the agent retries every 60 seconds.
 
 Before publishing Specs, two one-time Bamboo UI steps are required (both
 persist in the `bamboo-home` PVC, so this is genuinely one-time per
@@ -330,6 +338,18 @@ It scrapes the live Atlassian developer page, so it needs network access plus
 label: `LICENSE_LABEL='10 user Bamboo Data Center license, expires in 24 hours' make license`.
 As a fallback, open the page yourself (printed in the error) and copy the
 "Bamboo Data Center" key by hand.
+
+**`make agent-install` can't find the pod / jar**
+It looks for a Bamboo pod in namespace `ci` (override `BAMBOO_NAMESPACE`) and
+`kubectl cp`s the installer jar out of it. Make sure `make up` finished and
+`kubectl -n ci get pods` shows `bamboo-0` Running. `kubectl cp` needs `tar`
+in the pod (the Atlassian image ships it).
+
+**Agent installed but no builds run**
+With security token verification on, the agent must be **approved** after it
+first connects: Administration → Agents → Agent authentication → approve its
+UUID (the `agent-run` log prints the approval URL). It retries every 60s
+until approved.
 
 **Multipass flakes / provider errors**
 The community-maintained Multipass Terraform provider is known to be a bit

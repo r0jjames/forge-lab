@@ -7,5 +7,6 @@ AGENT_DIR="$HOME/.forgelab/agent"
 for tool in terraform ansible-playbook multipass jq java; do
   command -v "$tool" >/dev/null || { echo "Missing required tool: $tool"; exit 1; }
 done
-exec java -jar "$AGENT_DIR/agent-installer.jar" \
-  "${BAMBOO_URL}/agentServer/" console --home "$AGENT_HOME"
+# Agent home is set via the -Dbamboo.home property (before -jar), not a flag.
+exec java -Dbamboo.home="$AGENT_HOME" -jar "$AGENT_DIR/agent-installer.jar" \
+  "${BAMBOO_URL}/agentServer/" console
