@@ -16,6 +16,35 @@ bamboo:
   # verifyHostName=false because the broker's TLS cert isn't issued for
   # "localhost"; the agent still trusts it via the fingerprint exchange.
   brokerUrl: "ssl://localhost:54663?socket.verifyHostName=false&wireFormat.maxInactivityDuration=90000"
+  # The server advertises a broker client URI to agents, which it auto-derives
+  # from its own pod hostname (bamboo-0.bamboo.ci.svc.cluster.local) and writes
+  # to bamboo.jms.broker.client.uri in bamboo.cfg.xml at setup. A host-local
+  # agent can't resolve that in-cluster FQDN, so registration succeeds but the
+  # JMS connection fails over forever. brokerUrl above (ATL_CLIENT_BROKER_URL)
+  # does NOT override that key, and cfg.xml is generated once (forceConfigUpdate
+  # is false), so we override it every boot as a JVM system property pointed at
+  # localhost — reachable through the `make ui` port-forward of 54663.
+  # NOTE: exactly one query param, so no '&'. catalina.sh eval's this JVM arg,
+  # and an '&' is parsed as a shell separator (eval: <after-&>: not found ->
+  # exit 127 crash loop). verifyHostName=false is required because the broker's
+  # TLS cert is issued for the pod hostname, not localhost; keepalive tuning
+  # (maxInactivityDuration) is dropped to stay single-param and eval-safe.
+  additionalJvmArgs:
+    - "-Dbamboo.jms.broker.client.uri=ssl://localhost:54663?socket.verifyHostName=false"
+  # Unattended setup — skip the first-run wizard entirely. The chart writes
+  # unattended-setup.properties from these secrets on first boot; without them
+  # the properties file has empty admin/license/token fields, unattended setup
+  # aborts, and Bamboo falls back to the manual wizard. The manual wizard never
+  # applies bamboo.broker.uri, so the JMS broker (54663) never binds and remote
+  # agents can't connect (/agentServer/ 404s). All three secrets are created by
+  # `make bootstrap` at runtime — the license key never lands in git.
+  unattendedSetup: true
+  license:
+    secretName: bamboo-license      # key: license (24h timebomb, runtime-only)
+  sysadminCredentials:
+    secretName: bamboo-sysadmin      # keys: username/password/displayName/emailAddress
+  securityToken:
+    secretName: bamboo-agent-token   # key: security-token; shared with the host agent
   resources:
     container:
       requests: { cpu: "1", memory: 3Gi }

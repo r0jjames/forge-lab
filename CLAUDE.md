@@ -5,14 +5,24 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 
 ## Commands
 
+- `make bootstrap` — one-shot first-run: namespace, secrets, Postgres + Bamboo,
+  and Bamboo's UNATTENDED setup (no wizard). Skips the manual license/admin
+  steps and starts the remote-agent JMS broker automatically. Login `admin/admin`
 - `make up` / `make down` — CI stack (Bamboo + Postgres) on namespace `ci`
-  (`down` keeps PVCs). `make reset` — DESTRUCTIVE: wipe Bamboo PVCs + DB and
-  reinstall clean; use when boot fails with "Shared configuration ... does not
-  exist" (stale DB vs empty shared-home)
+  (`up` needs the secrets from `make bamboo-secrets`; `down` keeps PVCs)
+- `make reset` — DESTRUCTIVE: wipe Bamboo PVCs + DB and reinstall; unattended
+  setup re-runs on the fresh DB (re-licensed, broker up — no wizard). Use when
+  boot fails with "Shared configuration ... does not exist" (stale DB vs empty
+  shared-home)
+- `make bamboo-secrets` — create/refresh the unattended-setup secrets: license
+  (24h timebomb, runtime-only, never committed), sysadmin `admin/admin`, and the
+  40-hex agent security token (created once, shared server<->agent)
 - `make ui` — port-forward Bamboo to http://localhost:8085
-- `make license` — fetch + clipboard-copy the 24h timebomb key (setup wizard)
-- `make relicense` — fetch + copy key and open license admin page (after expiry)
-- `make agent-install` / `make agent-run` — host-local Bamboo agent
+- `make license` / `make relicense` — fetch the 24h timebomb key to clipboard
+  (only needed for manual wizard / post-expiry; `bootstrap` handles it via secret)
+- `make agent-install` / `make agent-run` — host-local Bamboo agent. Token is
+  auto-read from the `bamboo-agent-token` secret; approve the agent once in
+  Administration > Agents. Unattended setup already started the broker (54663)
 - `make provision CLUSTER=lab1 [TYPE=k8s|dcos]` / `make deprovision CLUSTER=lab1`
 - `make lint` — shellcheck + terraform fmt/validate + ansible-lint + mvn test
 

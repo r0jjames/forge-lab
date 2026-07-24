@@ -22,11 +22,38 @@ setup: ## One-time: namespace, db secret, ssh keypair, helm repos
 	helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null
 	helm repo update >/dev/null
 
-.PHONY: up
-up: ## Install/upgrade Postgres + Bamboo into ns ci
+.PHONY: bootstrap
+bootstrap: setup bamboo-secrets ## One command: full unattended stack (no setup wizard)
 	helm upgrade --install postgres bitnami/postgresql -n ci -f infra/helm/postgres-values.yaml --version 18.8.0
 	helm upgrade --install bamboo atlassian-data-center/bamboo -n ci -f infra/helm/bamboo-values.yaml --version 2.0.14
-	@echo "Run 'make ui' then open http://localhost:8085 (first boot: paste timebomb license in wizard)"
+	@echo "Waiting for Bamboo to finish unattended setup (first boot builds the schema)..."
+	kubectl -n ci rollout status statefulset/bamboo --timeout=600s
+	@echo ""
+	@echo "Bamboo up, licensed, broker on 54663. Login admin/admin at http://localhost:8085"
+	@echo "Finish the agent (two terminals):"
+	@echo "  1) make ui"
+	@echo "  2) make agent-install && make agent-run   # token auto-read from secret"
+	@echo "  then approve the agent once: Administration > Agents"
+
+.PHONY: bamboo-secrets
+bamboo-secrets: ## Create/refresh unattended-setup secrets (license, admin, agent token)
+	@key="$$(infra/scripts/get-license.sh)" || exit 1; \
+	  kubectl -n ci create secret generic bamboo-license \
+	    --from-literal=license="$$key" --dry-run=client -o yaml | kubectl apply -f -
+	kubectl -n ci create secret generic bamboo-sysadmin \
+	  --from-literal=username=admin --from-literal=password=admin \
+	  --from-literal=displayName=Admin --from-literal=emailAddress=admin@forge.lab \
+	  --dry-run=client -o yaml | kubectl apply -f -
+	@# Token must stay stable so server and agent keep matching — create once only.
+	@kubectl -n ci get secret bamboo-agent-token >/dev/null 2>&1 || \
+	  kubectl -n ci create secret generic bamboo-agent-token \
+	    --from-literal=security-token="$$(xxd -l 20 -p /dev/urandom)"
+
+.PHONY: up
+up: ## Install/upgrade Postgres + Bamboo (needs 'make bamboo-secrets' first)
+	helm upgrade --install postgres bitnami/postgresql -n ci -f infra/helm/postgres-values.yaml --version 18.8.0
+	helm upgrade --install bamboo atlassian-data-center/bamboo -n ci -f infra/helm/bamboo-values.yaml --version 2.0.14
+	@echo "Run 'make ui' then open http://localhost:8085 (admin/admin if secrets were set)"
 
 .PHONY: down
 down: ## Uninstall CI stack (PVCs survive)
@@ -46,8 +73,11 @@ reset: ## DESTRUCTIVE: wipe Bamboo state (PVCs + DB) and reinstall clean
 	    psql -U bamboo -d postgres \
 	    -c "DROP DATABASE IF EXISTS bamboo WITH (FORCE);" \
 	    -c "CREATE DATABASE bamboo OWNER bamboo;"
+	@# Fresh DB => unattended setup re-runs on boot; refresh the timebomb license first.
+	$(MAKE) bamboo-secrets
 	helm upgrade --install bamboo atlassian-data-center/bamboo -n ci -f infra/helm/bamboo-values.yaml --version 2.0.14
-	@echo "Reset done. 'make ui', open http://localhost:8085, redo wizard + 'make license'."
+	kubectl -n ci rollout status statefulset/bamboo --timeout=600s
+	@echo "Reset done. Bamboo re-provisioned unattended (admin/admin, broker up). 'make ui' + 'make agent-run'."
 
 .PHONY: status
 status: ## Pods in ns ci
