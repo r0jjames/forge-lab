@@ -31,7 +31,9 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 - `provisioning/scripts/` — CI-agnostic core; Bamboo Specs and Makefile both call these
 - `provisioning/terraform/modules/multipass/` — swappable VM backend boundary
 - `clusters/<name>.tfvars` — per-cluster sizing; `defaults.tfvars` fallback
-- `bamboo-specs/` — Java plans-as-code (mvn test validates offline)
+- `bamboo-specs/` — Java plans-as-code (mvn test validates offline); `lab.plans`
+  = forge-lab's own plans, `lab.agent` = the bamboo-agent image build plan
+  (sources live in the bamboo-agent repo; only the pipeline lives here)
 
 ## Conventions
 

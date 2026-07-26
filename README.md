@@ -168,16 +168,22 @@ install):
    (`exec:java`'s working directory is the `bamboo-specs/` module root, so
    the file must live there, not at the repo root.)
 2. **Linked repository** — Administration → Linked Repositories → add
-   `git@github.com:r0jjames/forge-lab.git`. All three specs
+   `git@github.com:r0jjames/forge-lab.git`. The three forge-lab specs
    (`HelloWorldSpec`, `ProvisionClusterSpec`, `DeprovisionClusterSpec`) call
    `defaultRepository()`, which resolves against this linked repo by name —
-   publish fails without it.
+   publish fails without it. `BuildAgentImageSpec` needs no such step: it
+   declares a plan-local repository for the public bamboo-agent repo.
 
 ```bash
 # 5. Publish all Bamboo Specs plans, proving the Specs → server publish
 #    loop works end to end
 make specs-publish
 ```
+
+This also publishes `AGENT-BUILD`, the plan that builds the containerized CI
+agent image from the [bamboo-agent](https://github.com/r0jjames/bamboo-agent)
+repo. It only runs on an agent with the `agent.role=ci` capability (that same
+containerized agent), so it stays queued until one is deployed and approved.
 
 At this point you have a licensed Bamboo server, a connected local agent, and
 published plans — the CI up (Phase 1) definition of done. Provisioning a
@@ -408,6 +414,8 @@ forge-lab/
 │   ├── helm/                       # Bamboo + Postgres chart values
 │   └── agent/                      # host-local agent install/run scripts
 ├── bamboo-specs/                   # Java + Maven (Bamboo Specs plans-as-code)
+│   ├── src/main/java/lab/plans/    # forge-lab's own plans (FORGE-*)
+│   └── src/main/java/lab/agent/    # bamboo-agent image build plan (AGENT-BUILD)
 ├── clusters/                       # per-cluster tfvars (+ defaults.tfvars)
 ├── provisioning/
 │   ├── terraform/                  # main.tf/variables/outputs, modules/multipass/
