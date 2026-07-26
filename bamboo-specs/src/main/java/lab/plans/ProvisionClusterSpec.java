@@ -23,6 +23,7 @@ public class ProvisionClusterSpec {
                 new Project().key(new BambooKey("FORGE")).name("forge-lab"),
                 "Provision Cluster", new BambooKey("PROV"))
             .description("Terraform+Ansible: provision named multipass cluster")
+            .linkedRepositories(new VcsRepositoryIdentifier().name(HelloWorldSpec.REPO_NAME))
             .variables(
                 new Variable("cluster_name", "lab1"),
                 new Variable("cluster_type", ""))

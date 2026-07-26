@@ -23,6 +23,7 @@ public class DeprovisionClusterSpec {
                 new Project().key(new BambooKey("FORGE")).name("forge-lab"),
                 "Deprovision Cluster", new BambooKey("DEPROV"))
             .description("Destroy named cluster + sweep leftovers")
+            .linkedRepositories(new VcsRepositoryIdentifier().name(HelloWorldSpec.REPO_NAME))
             .variables(
                 new Variable("cluster_name", "lab1"))
             .planBranchManagement(new PlanBranchManagement().delete(

@@ -109,9 +109,12 @@ agent-run: ## Run host-local Bamboo agent in console mode
 
 .PHONY: specs-publish
 specs-publish: ## Publish all Bamboo Specs plans to the server
+	@[ -f bamboo-specs/.credentials ] || \
+	  (echo "bamboo-specs/.credentials missing (needs 'token=<bamboo PAT>')"; exit 1)
 	@for c in $(SPEC_CLASSES); do \
 	  echo "==> publishing $$c"; \
-	  mvn -f bamboo-specs/pom.xml -q compile exec:java -Dexec.mainClass=$$c || exit 1; \
+	  (cd bamboo-specs && mvn -q compile exec:java -Dexec.mainClass=$$c \
+	    -Dexec.cleanupDaemonThreads=false) || exit 1; \
 	done
 
 .PHONY: provision

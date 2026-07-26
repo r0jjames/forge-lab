@@ -14,6 +14,9 @@ public class HelloWorldSpec {
 
     static final String BAMBOO_URL = "http://localhost:8085";
 
+    /** Linked repository the cluster plans check out; created once in Administration > Linked repositories. */
+    static final String REPO_NAME = "forge-lab";
+
     Plan plan() {
         return new Plan(
                 new Project().key(new BambooKey("FORGE")).name("forge-lab"),
