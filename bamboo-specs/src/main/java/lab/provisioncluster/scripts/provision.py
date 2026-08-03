@@ -39,6 +39,25 @@ def resolve_addons(override: str, tfvars_text: str, source: str) -> list:
     return names
 
 
+# Which addon owns which VM role. Keycloak owns none — it runs on the k8s
+# cluster the mgmt/compute nodes already form.
+ADDON_NODE_ROLES = {"hdfs": "data", "splunk": "splunk"}
+
+
+def node_count_overrides(addons) -> list:
+    """`-var <role>_count=0` for every VM role whose addon is off.
+
+    Counts are configured in the cluster's tfvars and only ever turned *off*
+    here, so the addon list and the sizing file cannot disagree. `-var` beats
+    `-var-file` on the terraform command line, which is what makes this work.
+    """
+    args = []
+    for addon, role in ADDON_NODE_ROLES.items():
+        if addon not in addons:
+            args += ["-var", f"{role}_count=0"]
+    return args
+
+
 def main(argv):
     cluster = argv[0] if argv else ""
     if not cluster:
@@ -74,7 +93,10 @@ def main(argv):
     terraform.init()
     terraform.workspace_select_or_new(cluster)
     terraform.apply_retry(
-        f"-var-file={tfvars}", "-var", f"cluster_name={cluster}", "-input=false"
+        f"-var-file={tfvars}",
+        "-var", f"cluster_name={cluster}",
+        *node_count_overrides(addons),
+        "-input=false",
     )
 
     # Render inventory from live multipass state (provider does not expose IPs)

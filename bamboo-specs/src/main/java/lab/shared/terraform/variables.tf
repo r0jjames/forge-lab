@@ -57,3 +57,40 @@ variable "compute_disk" {
   type    = string
   default = "20G"
 }
+variable "addons" {
+  type        = string
+  default     = ""
+  description = "Comma-separated addon names. provision.py derives node counts from it; terraform only records it."
+}
+variable "data_count" {
+  type    = number
+  default = 0
+}
+variable "data_cpu" {
+  type    = number
+  default = 2
+}
+variable "data_mem" {
+  type    = string
+  default = "4G"
+}
+variable "data_disk" {
+  type    = string
+  default = "40G"
+}
+variable "splunk_count" {
+  type    = number
+  default = 0
+}
+variable "splunk_cpu" {
+  type    = number
+  default = 2
+}
+variable "splunk_mem" {
+  type    = string
+  default = "6G"
+}
+variable "splunk_disk" {
+  type    = string
+  default = "40G"
+}

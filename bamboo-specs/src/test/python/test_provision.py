@@ -221,3 +221,40 @@ def test_addons_argument_overrides_the_tfvars_file(lab, monkeypatch):
     provision.main(["lab1", "", "keycloak"])
     ansible = next(c for c in recorded if c[0] == "ansible-playbook")
     assert "addons=keycloak" in ansible
+
+
+def test_node_count_overrides_zeroes_every_role_when_no_addons():
+    assert provision.node_count_overrides([]) == [
+        "-var", "data_count=0", "-var", "splunk_count=0",
+    ]
+
+
+def test_node_count_overrides_leaves_an_enabled_role_alone():
+    assert provision.node_count_overrides(["hdfs"]) == ["-var", "splunk_count=0"]
+
+
+def test_node_count_overrides_is_empty_when_every_role_is_wanted():
+    assert provision.node_count_overrides(["hdfs", "splunk", "keycloak"]) == []
+
+
+def test_keycloak_alone_builds_no_extra_vms():
+    """Keycloak runs on the k8s cluster; it needs no VM role of its own."""
+    assert provision.node_count_overrides(["keycloak"]) == [
+        "-var", "data_count=0", "-var", "splunk_count=0",
+    ]
+
+
+def test_apply_zeroes_the_vm_roles_of_disabled_addons(lab):
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = ""\n')
+    provision.main(["lab1"])
+    apply = next(c for c in lab.calls if c[0] == "tf-apply")
+    assert "data_count=0" in apply
+    assert "splunk_count=0" in apply
+
+
+def test_apply_keeps_the_vm_roles_of_enabled_addons(lab):
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,splunk"\n')
+    provision.main(["lab1"])
+    apply = next(c for c in lab.calls if c[0] == "tf-apply")
+    assert "data_count=0" not in apply
+    assert "splunk_count=0" not in apply
