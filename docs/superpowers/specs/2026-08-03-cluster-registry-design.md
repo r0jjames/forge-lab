@@ -133,6 +133,22 @@ characters); `1.30` becomes `"1.30"`, `192.168.252.10` and `4G` stay bare.
 `paths.py` gains `REPO_ROOT` (derived from `SHARED_DIR`, like every other path
 in that module) and `REGISTRY_DIR`.
 
+### Where the registry actually lives
+
+`REGISTRY_DIR` is `$FORGELAB_REGISTRY_DIR` when set, `REPO_ROOT/cluster_registered`
+otherwise. The repo-relative default is only correct outside CI: Bamboo gives
+every plan its own checkout under
+`~/.forgelab/bamboo-agent-home/xml-data/build-dir/FORGE-<PLAN>-JOB1`, so a
+repo-relative registry would write into a throwaway directory, and DEPROV's
+cleanup would target a different one than PROV wrote to.
+
+`run_agent.py` therefore exports `FORGELAB_REGISTRY_DIR` pointing at
+`<the clone the agent was started from>/cluster_registered` before exec'ing the
+JVM. Jobs inherit the agent's environment, so PROV, DEPROV and a hand-run
+`make provision` all converge on the one durable working copy. Nothing
+machine-specific is committed — the path is derived from the agent script's own
+location.
+
 `tfvars.py` gains a generic `parse(text) -> dict` for the `key = value` lines;
 `parse_cluster_type` becomes a lookup on it.
 

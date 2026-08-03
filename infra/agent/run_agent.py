@@ -21,6 +21,11 @@ AGENT_HOME = Path(
 )
 AGENT_DIR = Path.home() / ".forgelab" / "agent"
 
+# The clone this agent was started from — the one durable checkout on the host.
+# Bamboo's own per-plan checkouts are throwaway, so the plans write the cluster
+# registry here instead (see forgelab.paths.REGISTRY_DIR).
+CLONE_ROOT = Path(__file__).resolve().parents[2]
+
 # Capabilities this host agent must offer for the provisioning plans to run.
 REQUIRED_TOOLS = ("terraform", "ansible-playbook", "multipass", "java")
 
@@ -42,9 +47,22 @@ def seed_capability(caps_file: Path):
     print(f"Seeded {CAPABILITY_LINE} in {caps_file}")
 
 
+def registry_dir_env(env: dict) -> dict:
+    """Hand every job this agent runs one registry location, unless already set.
+
+    Jobs inherit this process's environment, which is the only way both PROV and
+    DEPROV — separate checkouts — can agree on where the cluster info files live.
+    """
+    if env.get("FORGELAB_REGISTRY_DIR"):
+        return env
+    return {**env, "FORGELAB_REGISTRY_DIR": str(CLONE_ROOT / "cluster_registered")}
+
+
 def main(argv):
     proc.require_tools(*REQUIRED_TOOLS)
     seed_capability(AGENT_HOME / "bin" / "bamboo-capabilities.properties")
+    os.environ.update(registry_dir_env(dict(os.environ)))
+    print(f"Cluster registry: {os.environ['FORGELAB_REGISTRY_DIR']}")
 
     # Agent home is set via the -Dbamboo.home property (before -jar), not a flag.
     # exec so the JVM replaces this process — no python wrapper left holding on

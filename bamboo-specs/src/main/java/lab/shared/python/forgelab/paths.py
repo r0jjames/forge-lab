@@ -7,6 +7,7 @@ the only stable anchor.
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 # .../lab/shared/python/forgelab/paths.py -> .../lab/shared
@@ -23,7 +24,16 @@ INV_DIR = ANSIBLE_DIR / "inventory"
 
 # Tracked, unlike the generated inventory: one file per live cluster, written by
 # provision and removed by deprovision.
-REGISTRY_DIR = REPO_ROOT / "cluster_registered"
+#
+# REPO_ROOT is only the right answer outside CI. Bamboo gives every plan its own
+# checkout (xml-data/build-dir/FORGE-PROV-JOB1, ...-DEPROV-JOB1), so a
+# repo-relative registry would land in an ephemeral directory nobody looks at,
+# and deprovision would try to delete from a different one than provision wrote.
+# FORGELAB_REGISTRY_DIR points both plans at one durable clone; run_agent.py sets
+# it to the clone the agent was started from.
+REGISTRY_DIR = Path(
+    os.environ.get("FORGELAB_REGISTRY_DIR", REPO_ROOT / "cluster_registered")
+)
 
 FORGELAB_HOME = Path.home() / ".forgelab"
 SSH_KEY = FORGELAB_HOME / "id_ed25519"
