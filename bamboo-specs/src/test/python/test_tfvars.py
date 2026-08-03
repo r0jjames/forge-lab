@@ -52,3 +52,32 @@ def test_parse_returns_every_key_unquoted():
 def test_parse_ignores_comments_and_blank_lines():
     text = '# sizing\n\nmgmt_cpu = 2  # bump me\n'
     assert tfvars_mod.parse(text) == {"mgmt_cpu": "2"}
+
+
+def test_parse_addons_splits_the_comma_list():
+    text = 'addons = "keycloak,hdfs,splunk"\n'
+    assert tfvars_mod.parse_addons(text) == ["keycloak", "hdfs", "splunk"]
+
+
+def test_parse_addons_tolerates_spaces_and_trailing_commas():
+    text = 'addons = "keycloak, hdfs ,"\n'
+    assert tfvars_mod.parse_addons(text) == ["keycloak", "hdfs"]
+
+
+def test_parse_addons_is_empty_when_the_value_is_empty():
+    assert tfvars_mod.parse_addons('addons = ""\n') == []
+
+
+def test_parse_addons_is_empty_when_the_key_is_absent():
+    assert tfvars_mod.parse_addons('cluster_type = "k8s"\n') == []
+
+
+def test_parse_addons_ignores_a_commented_line():
+    assert tfvars_mod.parse_addons('# addons = "splunk"\n') == []
+
+
+def test_parse_still_reads_the_new_sizing_scalars():
+    text = 'addons = "hdfs"\ndata_mem = "4G"\ndata_count = 3\n'
+    parsed = tfvars_mod.parse(text)
+    assert parsed["data_mem"] == "4G"
+    assert parsed["data_count"] == "3"

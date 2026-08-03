@@ -18,12 +18,33 @@ from forgelab import tfvars as tfvars_mod  # noqa: E402
 CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
 CLUSTER_TYPES = ("k8s", "dcos")
 
+# k9s is deliberately absent: it is a kubectl TUI, installed unconditionally by
+# the k8s role, not something a cluster opts into.
+ADDONS = ("keycloak", "hdfs", "splunk")
+
+
+def resolve_addons(override: str, tfvars_text: str, source: str) -> list:
+    """The cluster's addon list. The plan variable wins over the tfvars file."""
+    if override.strip():
+        names = [n for n in (p.strip() for p in override.split(",")) if n]
+        source = "the ADDONS override"
+    else:
+        names = tfvars_mod.parse_addons(tfvars_text)
+    unknown = sorted({n for n in names if n not in ADDONS})
+    if unknown:
+        proc.die(
+            f"unknown addon(s) [{' '.join(unknown)}] from {source}; "
+            f"known: {' '.join(ADDONS)}"
+        )
+    return names
+
 
 def main(argv):
     cluster = argv[0] if argv else ""
     if not cluster:
-        proc.die("usage: provision.py <cluster_name> [cluster_type]")
+        proc.die("usage: provision.py <cluster_name> [cluster_type] [addons]")
     type_override = argv[1] if len(argv) > 1 else ""
+    addons_override = argv[2] if len(argv) > 2 else ""
 
     # Stage 1: Validate
     proc.require_tools("terraform", "multipass", "ansible-playbook", "ssh")
@@ -43,8 +64,10 @@ def main(argv):
             f"cluster_type must be k8s or dcos "
             f"(got '{cluster_type}' from {type_source})"
         )
+    addons = resolve_addons(addons_override, tfvars.read_text(), str(tfvars))
     print(
-        f"==> provisioning '{cluster}' type={cluster_type} config={tfvars.name}"
+        f"==> provisioning '{cluster}' type={cluster_type} "
+        f"addons={','.join(addons) or 'none'} config={tfvars.name}"
     )
 
     # Stage 2: Provision (workspace per cluster, tfvars-driven)
@@ -79,6 +102,7 @@ def main(argv):
         paths.SITE_YML,
         "-i", inv,
         "-e", f"cluster_type={cluster_type}",
+        "-e", f"addons={','.join(addons)}",
         "-e", f"component_report={report}",
         env=paths.ansible_env(os.environ),
     )

@@ -50,3 +50,13 @@ def parse_cluster_type(text: str) -> str:
         if key == "cluster_type":
             return raw[1:-1] if raw.startswith('"') and raw.endswith('"') else ""
     return ""
+
+
+def parse_addons(text: str) -> list:
+    """The `addons = "a,b"` list, or [] when the key is absent or empty.
+
+    A comma string rather than an HCL list: `parse` only handles flat scalars,
+    and this keeps the cluster's settings in one file without teaching it more.
+    """
+    raw = parse(text).get("addons", "")
+    return [name for name in (part.strip() for part in raw.split(",")) if name]

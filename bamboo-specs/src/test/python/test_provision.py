@@ -166,3 +166,58 @@ def test_passes_the_resolved_cluster_type_to_ansible(lab, monkeypatch):
     provision.main(["lab1", "dcos"])
     ansible = next(c for c in recorded if c[0] == "ansible-playbook")
     assert "cluster_type=dcos" in ansible
+
+
+def test_resolve_addons_reads_the_tfvars_file():
+    assert provision.resolve_addons("", 'addons = "hdfs,splunk"\n', "f.tfvars") == [
+        "hdfs",
+        "splunk",
+    ]
+
+
+def test_resolve_addons_prefers_the_override():
+    assert provision.resolve_addons("keycloak", 'addons = "hdfs"\n', "f.tfvars") == [
+        "keycloak"
+    ]
+
+
+def test_resolve_addons_falls_back_when_the_override_is_blank():
+    """Bamboo always passes ${bamboo.addons}, which may be empty."""
+    assert provision.resolve_addons("  ", 'addons = "hdfs"\n', "f.tfvars") == ["hdfs"]
+
+
+def test_resolve_addons_rejects_an_unknown_name_from_the_file():
+    with pytest.raises(LabError, match=r"unknown addon\(s\) \[kafka\] from f.tfvars"):
+        provision.resolve_addons("", 'addons = "kafka"\n', "f.tfvars")
+
+
+def test_resolve_addons_rejects_an_unknown_name_from_the_override():
+    with pytest.raises(LabError, match="from the ADDONS override"):
+        provision.resolve_addons("kafka", "", "f.tfvars")
+
+
+def test_resolve_addons_names_the_known_addons_in_the_error():
+    with pytest.raises(LabError, match="known: keycloak hdfs splunk"):
+        provision.resolve_addons("kafka", "", "f.tfvars")
+
+
+def test_passes_the_resolved_addons_to_ansible(lab, monkeypatch):
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
+    recorded = []
+    monkeypatch.setattr(
+        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
+    )
+    provision.main(["lab1"])
+    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
+    assert "addons=hdfs" in ansible
+
+
+def test_addons_argument_overrides_the_tfvars_file(lab, monkeypatch):
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
+    recorded = []
+    monkeypatch.setattr(
+        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
+    )
+    provision.main(["lab1", "", "keycloak"])
+    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
+    assert "addons=keycloak" in ansible
