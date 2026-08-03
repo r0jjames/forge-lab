@@ -6,18 +6,39 @@
     - common
 
 - name: Kubernetes install
-  hosts: all
+  hosts: k8s_nodes
   become: true
   roles:
     - role: k8s
       when: cluster_type == "k8s"
 
 - name: DC/OS install
-  hosts: all
+  hosts: k8s_nodes
   become: true
   roles:
     - role: dcos
       when: cluster_type == "dcos"
+
+- name: Keycloak on the cluster
+  hosts: mgmt[0]
+  become: true
+  roles:
+    - role: keycloak
+      when: "'keycloak' in addons.split(',')"
+
+- name: HDFS on the data nodes
+  hosts: data
+  become: true
+  roles:
+    - role: hdfs
+      when: "'hdfs' in addons.split(',')"
+
+- name: Splunk on the splunk nodes
+  hosts: splunk
+  become: true
+  roles:
+    - role: splunk
+      when: "'splunk' in addons.split(',')"
 
 # Hand the component facts the roles set back to provision.py, which renders
 # them into cluster_registered/<cluster>_cluster_info.yml. Runs on one host

@@ -1,35 +1,13 @@
 ---
-- name: Disable swap now
-  ansible.builtin.command: swapoff -a
-  changed_when: false
-
-- name: Load kernel modules for container networking
-  community.general.modprobe:
-    name: "{{ item }}"
-    state: present
-  loop: [overlay, br_netfilter]
-
-- name: Persist kernel modules
-  ansible.builtin.copy:
-    dest: /etc/modules-load.d/forgelab.conf
-    content: |
-      overlay
-      br_netfilter
-    mode: "0644"
-
-- name: Sysctl for bridged/forwarded traffic
-  ansible.posix.sysctl:
-    name: "{{ item }}"
-    value: "1"
-    state: present
-    reload: true
-  loop:
-    - net.bridge.bridge-nf-call-iptables
-    - net.bridge.bridge-nf-call-ip6tables
-    - net.ipv4.ip_forward
-
 - name: Base packages
   ansible.builtin.apt:
     name: [curl, gnupg, ca-certificates, apt-transport-https]
     state: present
     update_cache: true
+
+# Swap, bridge modules and sysctls are cluster-node preparation. The data and
+# splunk VMs are not cluster nodes and must not be touched by it — HDFS in
+# particular has no reason to run with swap off.
+- name: Cluster-node kernel preparation
+  ansible.builtin.include_tasks: cluster_node.yml
+  when: inventory_hostname in groups['k8s_nodes'] | default([])
