@@ -2,7 +2,7 @@
 # Rewritten on every provision; removed on deprovision.
 cluster: lab1
 type: k8s
-provisioned_at: "2026-08-03T12:20:25Z"
+provisioned_at: "2026-08-03T12:35:03Z"
 ssh:
   user: ubuntu
   key: "~/.forgelab/id_ed25519"
@@ -10,19 +10,19 @@ ssh:
 nodes:
   - name: lab1-mgmt-1
     role: mgmt
-    ip: 192.168.252.54
+    ip: 192.168.252.61
     cpu: "2"
     mem: 4G
     disk: 20G
-  - name: lab1-compute-2
+  - name: lab1-compute-1
     role: compute
-    ip: 192.168.252.55
+    ip: 192.168.252.60
     cpu: "2"
     mem: 3G
     disk: 20G
-  - name: lab1-compute-1
+  - name: lab1-compute-2
     role: compute
-    ip: 192.168.252.53
+    ip: 192.168.252.59
     cpu: "2"
     mem: 3G
     disk: 20G
