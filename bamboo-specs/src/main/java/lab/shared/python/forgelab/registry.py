@@ -112,7 +112,8 @@ def read_components(report) -> list:
     return components if isinstance(components, list) else []
 
 
-def render(cluster: str, cluster_type: str, provisioned_at: str, nodes, components) -> str:
+def render(cluster: str, cluster_type: str, provisioned_at: str, nodes, components,
+           credentials="") -> str:
     """Build the cluster's info file. Pure — every value is passed in."""
     example = f"ssh {nodes[0].name}" if nodes else f"ssh {cluster}-mgmt-1"
     lines = [
@@ -147,14 +148,21 @@ def render(cluster: str, cluster_type: str, provisioned_at: str, nodes, componen
             if key != "name" and str(component[key])
         ]
 
+    # A pointer, never the secrets themselves — this file is tracked.
+    if credentials:
+        lines.append(f"credentials: {_scalar(_home_relative(credentials))}")
+
     return "\n".join(lines) + "\n"
 
 
-def write(cluster: str, cluster_type: str, provisioned_at: str, nodes, components) -> Path:
+def write(cluster: str, cluster_type: str, provisioned_at: str, nodes, components,
+          credentials="") -> Path:
     """Write the cluster's info file. Returns its path."""
     paths.REGISTRY_DIR.mkdir(parents=True, exist_ok=True)
     info = path(cluster)
-    info.write_text(render(cluster, cluster_type, provisioned_at, nodes, components))
+    info.write_text(
+        render(cluster, cluster_type, provisioned_at, nodes, components, credentials)
+    )
     print(f"==> cluster info: {info}")
     return info
 

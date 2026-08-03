@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
-from forgelab import multipass, paths, proc, registry, sshconf, terraform  # noqa: E402
+from forgelab import credentials, multipass, paths, proc, registry, sshconf, terraform  # noqa: E402
 from forgelab import tfvars as tfvars_mod  # noqa: E402
 
 CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
@@ -47,6 +47,7 @@ def main(argv):
         print(f"==> removed cluster info: {info}")
     else:
         print(f"==> no cluster info to remove at {info}")
+    credentials.remove(cluster)
     print(f"==> cluster '{cluster}' fully deprovisioned")
 
 
