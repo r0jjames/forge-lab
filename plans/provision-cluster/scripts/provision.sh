@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# shellcheck source=provisioning/scripts/lib.sh
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=plans/shared/scripts/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../shared/scripts/lib.sh"
 
 usage() { die "usage: provision.sh <cluster_name> [cluster_type]"; }
 CLUSTER="${1:-}"; [ -n "$CLUSTER" ] || usage
@@ -59,9 +59,9 @@ echo "==> inventory: $INV"
 write_ssh_config "$CLUSTER" "$INV"
 
 ### Stage 3: Install
-ansible-playbook "$REPO_ROOT/provisioning/ansible/site.yml" \
+ansible-playbook "$SHARED_DIR/ansible/site.yml" \
   -i "$INV" -e "cluster_type=${CLUSTER_TYPE}"
 
 ### Stage 4: Verify
-"$REPO_ROOT/provisioning/scripts/verify.sh" "$CLUSTER" "$CLUSTER_TYPE"
+"$(dirname "${BASH_SOURCE[0]}")/verify.sh" "$CLUSTER" "$CLUSTER_TYPE"
 echo "==> cluster '$CLUSTER' provisioned and verified"

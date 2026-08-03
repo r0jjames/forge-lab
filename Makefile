@@ -1,8 +1,9 @@
 SHELL := /bin/bash
 CLUSTER ?=
 TYPE ?=
-SPEC_CLASSES := lab.plans.HelloWorldSpec lab.plans.ProvisionClusterSpec lab.plans.DeprovisionClusterSpec \
-                lab.agent.BuildAgentImageSpec
+SPEC_CLASSES := lab.provisioncluster.ProvisionClusterSpec \
+                lab.deprovisioncluster.DeprovisionClusterSpec \
+                lab.agentimage.BuildAgentImageSpec
 
 .DEFAULT_GOAL := help
 
@@ -121,18 +122,18 @@ specs-publish: ## Publish all Bamboo Specs plans to the server
 .PHONY: provision
 provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	provisioning/scripts/provision.sh $(CLUSTER) $(TYPE)
+	plans/provision-cluster/scripts/provision.sh $(CLUSTER) $(TYPE)
 
 .PHONY: deprovision
 deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	provisioning/scripts/deprovision.sh $(CLUSTER)
+	plans/deprovision-cluster/scripts/deprovision.sh $(CLUSTER)
 
 .PHONY: lint
 lint: ## All static checks
-	shellcheck infra/scripts/*.sh infra/agent/*.sh provisioning/scripts/*.sh
-	terraform -chdir=provisioning/terraform fmt -check -recursive
-	terraform -chdir=provisioning/terraform init -backend=false -input=false >/dev/null
-	terraform -chdir=provisioning/terraform validate
-	cd provisioning/ansible && ansible-lint
+	shellcheck infra/scripts/*.sh infra/agent/*.sh plans/*/scripts/*.sh
+	terraform -chdir=plans/shared/terraform fmt -check -recursive
+	terraform -chdir=plans/shared/terraform init -backend=false -input=false >/dev/null
+	terraform -chdir=plans/shared/terraform validate
+	cd plans/shared/ansible && ansible-lint
 	mvn -f bamboo-specs/pom.xml -q test

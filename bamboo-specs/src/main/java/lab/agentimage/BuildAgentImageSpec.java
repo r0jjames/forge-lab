@@ -1,4 +1,4 @@
-package lab.agent;
+package lab.agentimage;
 
 import com.atlassian.bamboo.specs.api.BambooSpec;
 import com.atlassian.bamboo.specs.api.builders.BambooKey;
@@ -13,6 +13,7 @@ import com.atlassian.bamboo.specs.builders.task.CheckoutItem;
 import com.atlassian.bamboo.specs.builders.task.ScriptTask;
 import com.atlassian.bamboo.specs.builders.task.VcsCheckoutTask;
 import com.atlassian.bamboo.specs.util.BambooServer;
+import lab.shared.SpecConstants;
 
 /**
  * Build + push plan for the bamboo-agent container image. The image sources
@@ -22,9 +23,6 @@ import com.atlassian.bamboo.specs.util.BambooServer;
  */
 @BambooSpec
 public class BuildAgentImageSpec {
-
-    // Bamboo server reached over the `make ui` port-forward at publish time.
-    static final String BAMBOO_URL = "http://localhost:8085";
 
     Plan plan() {
         return new Plan(
@@ -51,7 +49,7 @@ public class BuildAgentImageSpec {
     }
 
     public static void main(String[] args) {
-        BambooServer server = new BambooServer(BAMBOO_URL);
+        BambooServer server = new BambooServer(SpecConstants.BAMBOO_URL);
         server.publish(new BuildAgentImageSpec().plan());
     }
 }

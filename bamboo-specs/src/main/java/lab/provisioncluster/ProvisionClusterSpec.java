@@ -1,4 +1,4 @@
-package lab.plans;
+package lab.provisioncluster;
 
 import com.atlassian.bamboo.specs.api.BambooSpec;
 import com.atlassian.bamboo.specs.api.builders.BambooKey;
@@ -15,6 +15,7 @@ import com.atlassian.bamboo.specs.builders.task.CheckoutItem;
 import com.atlassian.bamboo.specs.builders.task.ScriptTask;
 import com.atlassian.bamboo.specs.builders.task.VcsCheckoutTask;
 import com.atlassian.bamboo.specs.util.BambooServer;
+import lab.shared.SpecConstants;
 
 @BambooSpec
 public class ProvisionClusterSpec {
@@ -24,7 +25,7 @@ public class ProvisionClusterSpec {
                 new Project().key(new BambooKey("FORGE")).name("forge-lab"),
                 "Provision Cluster", new BambooKey("PROV"))
                 .description("Terraform+Ansible: provision named multipass cluster")
-                .linkedRepositories(new VcsRepositoryIdentifier().name(HelloWorldSpec.REPO_NAME))
+                .linkedRepositories(new VcsRepositoryIdentifier().name(SpecConstants.REPO_NAME))
                 .variables(
                         new Variable("cluster_name", "lab1"),
                         new Variable("cluster_type", ""))
@@ -42,11 +43,11 @@ public class ProvisionClusterSpec {
                                 new VcsCheckoutTask().description("checkout")
                                         .checkoutItems(new CheckoutItem().defaultRepository()),
                                 new ScriptTask().description("provision cluster")
-                                        .inlineBody("provisioning/scripts/provision.sh "
+                                        .inlineBody("plans/provision-cluster/scripts/provision.sh "
                                                 + "\"${bamboo.cluster_name}\" \"${bamboo.cluster_type}\""))));
     }
 
     public static void main(String[] args) {
-        new BambooServer(HelloWorldSpec.BAMBOO_URL).publish(new ProvisionClusterSpec().plan());
+        new BambooServer(SpecConstants.BAMBOO_URL).publish(new ProvisionClusterSpec().plan());
     }
 }

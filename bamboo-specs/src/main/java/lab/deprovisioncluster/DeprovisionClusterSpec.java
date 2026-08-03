@@ -1,4 +1,4 @@
-package lab.plans;
+package lab.deprovisioncluster;
 
 import com.atlassian.bamboo.specs.api.BambooSpec;
 import com.atlassian.bamboo.specs.api.builders.BambooKey;
@@ -15,6 +15,7 @@ import com.atlassian.bamboo.specs.builders.task.CheckoutItem;
 import com.atlassian.bamboo.specs.builders.task.ScriptTask;
 import com.atlassian.bamboo.specs.builders.task.VcsCheckoutTask;
 import com.atlassian.bamboo.specs.util.BambooServer;
+import lab.shared.SpecConstants;
 
 @BambooSpec
 public class DeprovisionClusterSpec {
@@ -24,7 +25,7 @@ public class DeprovisionClusterSpec {
                 new Project().key(new BambooKey("FORGE")).name("forge-lab"),
                 "Deprovision Cluster", new BambooKey("DEPROV"))
                 .description("Destroy named cluster + sweep leftovers")
-                .linkedRepositories(new VcsRepositoryIdentifier().name(HelloWorldSpec.REPO_NAME))
+                .linkedRepositories(new VcsRepositoryIdentifier().name(SpecConstants.REPO_NAME))
                 .variables(
                         new Variable("cluster_name", "lab1"))
                 .planBranchManagement(new PlanBranchManagement().delete(
@@ -39,11 +40,11 @@ public class DeprovisionClusterSpec {
                                 new VcsCheckoutTask().description("checkout")
                                         .checkoutItems(new CheckoutItem().defaultRepository()),
                                 new ScriptTask().description("deprovision cluster")
-                                        .inlineBody("provisioning/scripts/deprovision.sh "
+                                        .inlineBody("plans/deprovision-cluster/scripts/deprovision.sh "
                                                 + "\"${bamboo.cluster_name}\""))));
     }
 
     public static void main(String[] args) {
-        new BambooServer(HelloWorldSpec.BAMBOO_URL).publish(new DeprovisionClusterSpec().plan());
+        new BambooServer(SpecConstants.BAMBOO_URL).publish(new DeprovisionClusterSpec().plan());
     }
 }

@@ -34,12 +34,27 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 
 ## Layout map
 
-- `provisioning/scripts/` — CI-agnostic core; Bamboo Specs and Makefile both call these
-- `provisioning/terraform/modules/multipass/` — swappable VM backend boundary
-- `clusters/<name>.tfvars` — per-cluster sizing; `defaults.tfvars` fallback
-- `bamboo-specs/` — Java plans-as-code (mvn test validates offline); `lab.plans`
-  = forge-lab's own plans, `lab.agent` = the bamboo-agent image build plan
-  (sources live in the bamboo-agent repo; only the pipeline lives here)
+- `plans/<plan-id>/scripts/` — everything a single plan executes; CI-agnostic
+  core, called by both the Bamboo spec and the Makefile
+- `plans/shared/` — code used by 2+ plans: `scripts/lib.sh`, `terraform/`
+  (`modules/multipass/` = swappable VM backend boundary), `ansible/`, and
+  `clusters/<name>.tfvars` (per-cluster sizing; `defaults.tfvars` fallback)
+- `infra/` — lab operations NOT run by any plan: `helm/` chart values,
+  `agent/` host-agent install+run, `scripts/` license fetch
+- `bamboo-specs/` — Java plans-as-code (mvn test validates offline); one
+  package per plan, mirroring the plan directory name
+
+## Adding a plan
+
+Full contract in `plans/README.md`. In short:
+
+1. `plans/<plan-id>/` — kebab-case, one directory per plan spec
+2. Its scripts in `plans/<plan-id>/scripts/`; nothing outside that plan uses them
+3. Spec at `bamboo-specs/src/main/java/lab/<planid>/<Name>Spec.java` (`<planid>`
+   = plan-id with dashes stripped) + one offline-validation test beside it
+4. Shared by 2+ plans → `plans/shared/`; never reach into another plan's dir
+5. Not plan-executed → `infra/`, not `plans/`
+6. Register the class in the Makefile's `SPEC_CLASSES`
 
 ## Conventions
 

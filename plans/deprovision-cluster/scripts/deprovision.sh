@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# shellcheck disable=SC1091 # lib.sh is a sibling script, not a shellcheck-followable input
-source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
+# shellcheck source=plans/shared/scripts/lib.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../../shared/scripts/lib.sh"
 
 CLUSTER="${1:?usage: deprovision.sh <cluster_name>}"
 [[ "$CLUSTER" =~ ^[a-z0-9-]+$ ]] || die "cluster_name must match ^[a-z0-9-]+$"

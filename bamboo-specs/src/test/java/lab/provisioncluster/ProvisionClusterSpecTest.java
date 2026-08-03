@@ -1,15 +1,12 @@
-package lab.agent;
+package lab.provisioncluster;
 
-import com.atlassian.bamboo.specs.api.builders.plan.Plan;
 import com.atlassian.bamboo.specs.api.util.EntityPropertiesBuilders;
 import org.junit.Test;
 
-public class BuildAgentImageSpecTest {
-
+public class ProvisionClusterSpecTest {
     @Test
     public void planIsOfflineValid() {
-        Plan plan = new BuildAgentImageSpec().plan();
         // Throws if the plan is structurally invalid — offline validation.
-        EntityPropertiesBuilders.build(plan);
+        EntityPropertiesBuilders.build(new ProvisionClusterSpec().plan());
     }
 }
