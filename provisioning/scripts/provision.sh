@@ -32,16 +32,21 @@ terraform -chdir="$TF_DIR" workspace select "$CLUSTER" 2>/dev/null \
 tf_apply_retry -var-file="$TFVARS" -var "cluster_name=$CLUSTER" -input=false
 
 ### Render inventory from live multipass state (provider does not expose IPs)
+# Take the node's LAN address, not .ipv4[0]: once the CNI is up a node also
+# advertises its pod-network address (10.244.x by default, see k8s_pod_cidr),
+# and that one is unreachable from the host.
 mkdir -p "$INV_DIR"
 INV="$INV_DIR/${CLUSTER}.ini"
 {
   echo "[mgmt]"
   multipass list --format json | jq -r --arg p "${CLUSTER}-mgmt-" \
-    '.list[] | select(.name | startswith($p)) | "\(.name) ansible_host=\(.ipv4[0])"'
+    '.list[] | select(.name | startswith($p))
+     | "\(.name) ansible_host=\([.ipv4[] | select(startswith("10.244.") | not)] | first)"'
   echo ""
   echo "[compute]"
   multipass list --format json | jq -r --arg p "${CLUSTER}-compute-" \
-    '.list[] | select(.name | startswith($p)) | "\(.name) ansible_host=\(.ipv4[0])"'
+    '.list[] | select(.name | startswith($p))
+     | "\(.name) ansible_host=\([.ipv4[] | select(startswith("10.244.") | not)] | first)"'
   echo ""
   echo "[all:vars]"
   echo "ansible_user=ubuntu"
@@ -49,7 +54,9 @@ INV="$INV_DIR/${CLUSTER}.ini"
   echo "ansible_ssh_common_args='-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null'"
   echo "cluster_name=${CLUSTER}"
 } > "$INV"
+assert_unique_ips "$INV"
 echo "==> inventory: $INV"
+write_ssh_config "$CLUSTER" "$INV"
 
 ### Stage 3: Install
 ansible-playbook "$REPO_ROOT/provisioning/ansible/site.yml" \

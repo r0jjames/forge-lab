@@ -227,8 +227,17 @@ Bamboo `ProvisionClusterPlan`, since both call the same
    from `clusters/<name>.tfvars` if it exists, else `clusters/defaults.tfvars`.
    An explicit `TYPE=` overrides whatever `cluster_type` the tfvars file sets.
 2. **Provision** — `terraform workspace select/new <name>`, then
-   `apply -var-file=<resolved> -var cluster_name=<name>`; renders
-   `provisioning/ansible/inventory/<name>.ini` from the Terraform output.
+   `apply -var-file=<resolved> -var cluster_name=<name>` (serially — see the
+   Multipass MAC note under Troubleshooting); renders
+   `provisioning/ansible/inventory/<name>.ini` from the Terraform output,
+   refusing to continue if two nodes came back with the same IP. Also writes
+   `~/.forgelab/ssh_config.d/<name>.conf` so `ssh <name>-mgmt-1` and
+   `ssh <node-ip>` log in as `ubuntu` with `~/.forgelab/id_ed25519` — no flags
+   needed. The first provision prepends a single
+   `Include ~/.forgelab/ssh_config.d/*.conf` line to `~/.ssh/config`
+   (backing the old file up as `~/.ssh/config.forgelab.bak`); the include has
+   to sit above any `Host *` block because ssh keeps the first value it finds
+   for an option. `make deprovision` deletes the per-cluster file.
 3. **Install** — `ansible-playbook site.yml -i inventory/<name>.ini -e cluster_type=<type>`.
    k8s path: kubeadm + containerd + CNI. dcos path: pinned installer version,
    cached locally.
@@ -383,6 +392,16 @@ flaky. Scripts pin a known-good provider version and retry `apply` once on
 recognized transient errors. If it still fails, check `multipass list` for
 stray VMs and consider a manual `multipass delete --purge <name>` before
 retrying.
+
+**Ansible says `No route to host` right after a green `terraform apply`**
+Check the generated inventory: if several nodes share one `ansible_host` IP,
+Multipass gave the whole batch the *same MAC address*, so DHCP issued them a
+single lease (`ps -Ao command | grep -o 'mac=[0-9a-f:]*'` shows the duplicate).
+This is a multipassd race on concurrent launches, which is why
+`tf_apply_retry` runs `terraform apply -parallelism=1` — never remove that
+flag. `provision.sh` now fails fast on duplicate IPs instead of handing the
+broken inventory to Ansible. Recovery: `make deprovision CLUSTER=<name>` and
+re-run.
 
 **Partial provision failure**
 There is no automatic rollback. Run `make deprovision CLUSTER=<name>` — it's

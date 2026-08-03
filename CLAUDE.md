@@ -27,6 +27,9 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
   plans *require* it so they never schedule on the containerized k8s agent
   (`agent.role=ci`), which has no terraform/multipass
 - `make provision CLUSTER=lab1 [TYPE=k8s|dcos]` / `make deprovision CLUSTER=lab1`
+  — provision also writes `~/.forgelab/ssh_config.d/<cluster>.conf` (included
+  from `~/.ssh/config`) so `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu`
+  with the lab key; deprovision removes it
 - `make lint` — shellcheck + terraform fmt/validate + ansible-lint + mvn test
 
 ## Layout map
@@ -44,3 +47,6 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 - Scripts: bash strict mode, shellcheck-clean
 - Never commit: license keys, generated inventories, tfstate
 - Multipass units: "4G"/"20G", not Gi
+- Terraform applies run `-parallelism=1` (`tf_apply_retry`): concurrent
+  `multipass launch` races give every VM in the batch the same MAC, hence one
+  shared DHCP lease. Do not drop the flag

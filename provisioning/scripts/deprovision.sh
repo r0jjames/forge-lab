@@ -27,6 +27,7 @@ if [ -n "$LEFTOVERS" ]; then
   multipass purge || true
 fi
 
-### 3. Remove generated inventory
+### 3. Remove generated inventory + ssh config
 rm -f "$INV_DIR/${CLUSTER}.ini"
+remove_ssh_config "$CLUSTER"
 echo "==> cluster '$CLUSTER' fully deprovisioned"

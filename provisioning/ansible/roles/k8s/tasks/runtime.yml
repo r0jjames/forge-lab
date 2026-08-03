@@ -24,9 +24,23 @@
     dest: /etc/apt/keyrings/kubernetes.asc
     mode: "0644"
 
+# Drop the one-line repo file older runs of this role left behind, so a
+# re-run against an existing cluster doesn't end up with the same repo
+# configured twice (apt then warns on every update).
+- name: Remove legacy one-line Kubernetes apt repo
+  ansible.builtin.file:
+    path: /etc/apt/sources.list.d/pkgs_k8s_io_core_stable_v{{ k8s_version | replace('.', '_') }}_deb.list
+    state: absent
+
+# deb822 form: apt_repository is deprecated and goes away in ansible-core 2.25.
+# pkgs.k8s.io is a flat repo, hence `suites: /` and no components.
 - name: Kubernetes apt repo
-  ansible.builtin.apt_repository:
-    repo: "deb [signed-by=/etc/apt/keyrings/kubernetes.asc] https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/ /"
+  ansible.builtin.deb822_repository:
+    name: kubernetes
+    types: [deb]
+    uris: "https://pkgs.k8s.io/core:/stable:/v{{ k8s_version }}/deb/"
+    suites: "/"
+    signed_by: /etc/apt/keyrings/kubernetes.asc
     state: present
 
 - name: Install kubeadm/kubelet/kubectl
