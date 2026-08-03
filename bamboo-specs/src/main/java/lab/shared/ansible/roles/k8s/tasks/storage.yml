@@ -1,0 +1,25 @@
+---
+# A kubeadm cluster ships no StorageClass, so every PVC stays Pending forever.
+# local-path-provisioner is the smallest thing that fixes that on single-host
+# lab nodes: it hands out hostPath directories under /opt/local-path-provisioner.
+- name: Install local-path-provisioner
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f {{ k8s_local_path_url }}
+  register: k8s_local_path
+  changed_when: "'created' in k8s_local_path.stdout or 'configured' in k8s_local_path.stdout"
+
+- name: Make local-path the default StorageClass
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf patch storageclass local-path
+    -p '{"metadata":{"annotations":{"storageclass.kubernetes.io/is-default-class":"true"}}}'
+  register: k8s_sc_default
+  changed_when: "'patched' in k8s_sc_default.stdout"
+  failed_when:
+    - k8s_sc_default.rc != 0
+    - "'not patched' not in k8s_sc_default.stdout"
+
+- name: Wait for the provisioner to be ready
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf -n local-path-storage
+    rollout status deployment/local-path-provisioner --timeout=180s
+  changed_when: false

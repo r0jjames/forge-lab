@@ -31,6 +31,19 @@ def nodes_ready(kubectl_output: str) -> bool:
     )
 
 
+def default_storage_class(text: str) -> str:
+    """The default StorageClass name in `kubectl get sc --no-headers` output.
+
+    kubectl renders the default-class annotation as a `(default)` suffix on the
+    name, which lands in the second whitespace-separated column.
+    """
+    for line in text.splitlines():
+        cols = line.split()
+        if len(cols) > 1 and cols[1] == "(default)":
+            return cols[0]
+    return ""
+
+
 def _ssh(mgmt_ip: str, command: str) -> subprocess.CompletedProcess:
     return subprocess.run(
         ["ssh", "-i", str(paths.SSH_KEY), *SSH_OPTS, f"ubuntu@{mgmt_ip}", command],
@@ -46,9 +59,18 @@ def _verify_k8s(mgmt_ip: str):
         result = _ssh(mgmt_ip, "kubectl get nodes --no-headers")
         if result.returncode == 0 and nodes_ready(result.stdout):
             print(result.stdout, end="")
-            return
+            break
         time.sleep(INTERVAL_SECONDS)
-    proc.die("nodes not all Ready within timeout")
+    else:
+        proc.die("nodes not all Ready within timeout")
+
+    result = _ssh(mgmt_ip, "kubectl get storageclass --no-headers")
+    if not default_storage_class(result.stdout):
+        proc.die("no default StorageClass — local-path-provisioner did not install")
+    result = _ssh(mgmt_ip, "k9s version --short")
+    if result.returncode != 0:
+        proc.die("k9s is not installed on the control plane node")
+    print("default StorageClass and k9s present")
 
 
 def _verify_dcos(mgmt_ip: str):

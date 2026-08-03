@@ -10,6 +10,14 @@
   ansible.builtin.import_tasks: join.yml
   when: inventory_hostname != groups['mgmt'][0]
 
+- name: Install k9s on the control plane
+  ansible.builtin.import_tasks: k9s.yml
+  when: inventory_hostname in groups['mgmt']
+
+- name: Install the default StorageClass
+  ansible.builtin.import_tasks: storage.yml
+  when: inventory_hostname == groups['mgmt'][0]
+
 # The role declares what it installed; site.yml's last play collects the facts
 # and provision.py copies them into the cluster's info file. Version is omitted
 # for anything the lab does not pin. The fact is deliberately not k8s_-prefixed:
@@ -18,4 +26,6 @@
   ansible.builtin.set_fact:
     forgelab_components: >-
       {{ forgelab_components | default([]) + [{'name': 'kubernetes', 'version': k8s_version},
-      {'name': 'containerd'}, {'name': 'flannel', 'version': 'latest'}] }}
+      {'name': 'containerd'}, {'name': 'flannel', 'version': 'latest'},
+      {'name': 'k9s', 'version': k8s_k9s_version},
+      {'name': 'local-path-provisioner', 'version': k8s_local_path_version}] }}
