@@ -5,5 +5,8 @@ keycloak_node_port: 30080
 keycloak_realm: forgelab
 keycloak_client_id: app
 keycloak_user: labuser
+keycloak_user_email: labuser@forge.lab
+keycloak_user_first_name: Lab
+keycloak_user_last_name: User
 keycloak_db_storage: 2Gi
 keycloak_manifest: /etc/forgelab/keycloak.yml

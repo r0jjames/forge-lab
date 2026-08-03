@@ -74,6 +74,10 @@
     - keycloak_client_create.rc != 0
     - "'already exists' not in keycloak_client_create.stderr"
 
+# Keycloak 24+'s declarative user profile requires email/firstName/lastName
+# by default. A user created with only a username is "not fully set up" and
+# fails the password grant with invalid_grant at login time — the account
+# looks fine in the admin API right up until then.
 - name: Create the test user
   ansible.builtin.command:
     argv:
@@ -93,6 +97,14 @@
       - "username={{ keycloak_user }}"
       - -s
       - enabled=true
+      - -s
+      - "email={{ keycloak_user_email }}"
+      - -s
+      - "firstName={{ keycloak_user_first_name }}"
+      - -s
+      - "lastName={{ keycloak_user_last_name }}"
+      - -s
+      - emailVerified=true
   register: keycloak_user_create
   changed_when: keycloak_user_create.rc == 0
   failed_when:
