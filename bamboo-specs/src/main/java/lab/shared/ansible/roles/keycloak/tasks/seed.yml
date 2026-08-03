@@ -1,0 +1,121 @@
+---
+# kcadm.sh runs inside the pod so the admin password never reaches this VM's
+# process table. `|| true`-style idempotency is avoided: creating an existing
+# realm exits non-zero with a message we match on instead.
+- name: Log kcadm in
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - -n
+      - "{{ keycloak_namespace }}"
+      - exec
+      - deploy/keycloak
+      - --
+      - /opt/keycloak/bin/kcadm.sh
+      - config
+      - credentials
+      - --server=http://localhost:8080
+      - --realm=master
+      - --user=admin
+      - "--password={{ keycloak_admin_password }}"
+  changed_when: false
+  no_log: true
+
+- name: Create the lab realm
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - -n
+      - "{{ keycloak_namespace }}"
+      - exec
+      - deploy/keycloak
+      - --
+      - /opt/keycloak/bin/kcadm.sh
+      - create
+      - realms
+      - -s
+      - "realm={{ keycloak_realm }}"
+      - -s
+      - enabled=true
+  register: keycloak_realm_create
+  changed_when: keycloak_realm_create.rc == 0
+  failed_when:
+    - keycloak_realm_create.rc != 0
+    - "'already exists' not in keycloak_realm_create.stderr"
+
+- name: Create the public OIDC client
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - -n
+      - "{{ keycloak_namespace }}"
+      - exec
+      - deploy/keycloak
+      - --
+      - /opt/keycloak/bin/kcadm.sh
+      - create
+      - clients
+      - -r
+      - "{{ keycloak_realm }}"
+      - -s
+      - "clientId={{ keycloak_client_id }}"
+      - -s
+      - publicClient=true
+      - -s
+      - directAccessGrantsEnabled=true
+      - -s
+      - 'redirectUris=["*"]'
+  register: keycloak_client_create
+  changed_when: keycloak_client_create.rc == 0
+  failed_when:
+    - keycloak_client_create.rc != 0
+    - "'already exists' not in keycloak_client_create.stderr"
+
+- name: Create the test user
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - -n
+      - "{{ keycloak_namespace }}"
+      - exec
+      - deploy/keycloak
+      - --
+      - /opt/keycloak/bin/kcadm.sh
+      - create
+      - users
+      - -r
+      - "{{ keycloak_realm }}"
+      - -s
+      - "username={{ keycloak_user }}"
+      - -s
+      - enabled=true
+  register: keycloak_user_create
+  changed_when: keycloak_user_create.rc == 0
+  failed_when:
+    - keycloak_user_create.rc != 0
+    - "'already exists' not in keycloak_user_create.stderr"
+
+- name: Set the test user's password
+  ansible.builtin.command:
+    argv:
+      - kubectl
+      - --kubeconfig=/etc/kubernetes/admin.conf
+      - -n
+      - "{{ keycloak_namespace }}"
+      - exec
+      - deploy/keycloak
+      - --
+      - /opt/keycloak/bin/kcadm.sh
+      - set-password
+      - -r
+      - "{{ keycloak_realm }}"
+      - --username
+      - "{{ keycloak_user }}"
+      - --new-password
+      - "{{ keycloak_app_user_password }}"
+  changed_when: true
+  no_log: true

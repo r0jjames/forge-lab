@@ -1,1 +1,9 @@
 ---
+keycloak_version: "26.0.7"
+keycloak_namespace: keycloak
+keycloak_node_port: 30080
+keycloak_realm: forgelab
+keycloak_client_id: app
+keycloak_user: labuser
+keycloak_db_storage: 2Gi
+keycloak_manifest: /etc/forgelab/keycloak.yml

@@ -1,2 +1,43 @@
 ---
-# Filled in by the keycloak task of the cluster-addons plan.
+- name: Directory for the rendered manifest
+  ansible.builtin.file:
+    path: "{{ keycloak_manifest | dirname }}"
+    state: directory
+    mode: "0700"
+
+- name: Render the Keycloak manifest
+  ansible.builtin.template:
+    src: keycloak.yml.j2
+    dest: "{{ keycloak_manifest }}"
+    mode: "0600"
+  no_log: true
+
+- name: Apply the Keycloak manifest
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf apply -f {{ keycloak_manifest }}
+  register: keycloak_apply
+  changed_when: "'created' in keycloak_apply.stdout or 'configured' in keycloak_apply.stdout"
+
+- name: Wait for the database
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf -n {{ keycloak_namespace }}
+    rollout status deployment/keycloak-db --timeout=300s
+  changed_when: false
+
+- name: Wait for Keycloak
+  ansible.builtin.command: >-
+    kubectl --kubeconfig /etc/kubernetes/admin.conf -n {{ keycloak_namespace }}
+    rollout status deployment/keycloak --timeout=600s
+  changed_when: false
+
+- name: Seed the realm, client and user
+  ansible.builtin.import_tasks: seed.yml
+
+- name: Report installed components  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    forgelab_components: >-
+      {{ forgelab_components | default([]) + [{'name': 'keycloak',
+      'version': keycloak_version,
+      'url': 'http://' ~ ansible_host ~ ':' ~ keycloak_node_port,
+      'realm': keycloak_realm,
+      'client_id': keycloak_client_id}] }}
