@@ -18,3 +18,24 @@ def test_leaves_an_explicit_setting_alone():
 
 def test_the_clone_root_is_a_checkout():
     assert (run_agent.CLONE_ROOT / "Makefile").is_file()
+
+
+def test_seeds_the_host_pointer_so_a_running_agent_picks_it_up(tmp_path, capsys):
+    pointer = tmp_path / "forgelab" / "registry_dir"
+    run_agent.seed_registry_pointer(pointer, "/clone/cluster_registered")
+    assert pointer.read_text() == "/clone/cluster_registered\n"
+    assert "Seeded cluster registry location" in capsys.readouterr().out
+
+
+def test_rewrites_a_pointer_that_names_somewhere_else(tmp_path):
+    pointer = tmp_path / "registry_dir"
+    pointer.write_text("/old/cluster_registered\n")
+    run_agent.seed_registry_pointer(pointer, "/clone/cluster_registered")
+    assert pointer.read_text() == "/clone/cluster_registered\n"
+
+
+def test_says_nothing_when_the_pointer_already_agrees(tmp_path, capsys):
+    pointer = tmp_path / "registry_dir"
+    pointer.write_text("/clone/cluster_registered\n")
+    run_agent.seed_registry_pointer(pointer, "/clone/cluster_registered")
+    assert capsys.readouterr().out == ""

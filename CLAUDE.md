@@ -25,9 +25,9 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
   Administration > Agents. Unattended setup already started the broker (54663).
   `agent-run` seeds capability `agent.role=host`; the Provision/Deprovision
   plans *require* it so they never schedule on the containerized k8s agent
-  (`agent.role=ci`), which has no terraform/multipass. It also exports
-  `FORGELAB_REGISTRY_DIR=<this clone>/cluster_registered`, inherited by every
-  job it runs — restart the agent after moving the clone
+  (`agent.role=ci`), which has no terraform/multipass. It also points the
+  cluster registry at `<this clone>/cluster_registered`, via both
+  `FORGELAB_REGISTRY_DIR` and `~/.forgelab/registry_dir`
 - `make provision CLUSTER=lab1 [TYPE=k8s|dcos]` / `make deprovision CLUSTER=lab1`
   — provision also writes `~/.forgelab/ssh_config.d/<cluster>.conf` (included
   from `~/.ssh/config`) so `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu`
@@ -53,10 +53,12 @@ one directory per Bamboo plan, holding its spec AND the code it runs:
 - `cluster_registered/` — generated output, tracked, owned by PROV/DEPROV:
   `<cluster>_cluster_info.yml` (IPs, sizing, ssh hints, installed components)
   written by provision after verify passes, deleted by deprovision. The
-  pipeline never commits it — you do. Location is `$FORGELAB_REGISTRY_DIR`,
-  which `make agent-run` sets to this clone: Bamboo gives each plan its own
-  throwaway checkout, so a repo-relative path would strand PROV's file where
-  DEPROV can never delete it
+  pipeline never commits it — you do. Location resolves
+  `$FORGELAB_REGISTRY_DIR` → `~/.forgelab/registry_dir` (one line, seeded by
+  `agent-run`) → this checkout. Bamboo gives each plan its own throwaway
+  checkout, so a repo-relative path strands PROV's file where DEPROV can never
+  delete it; the pointer file is read per run, so a long-running agent picks up
+  a change without a restart
 - Python and Terraform inside a Maven source root is deliberate — one lookup
   per plan. Maven compiles `.java` and ignores the rest.
 - `infra/` may import `forgelab` and nothing else under `lab/`; the dependency

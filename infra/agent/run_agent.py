@@ -13,7 +13,7 @@ sys.path.insert(
     ),
 )
 
-from forgelab import proc  # noqa: E402
+from forgelab import paths, proc  # noqa: E402
 
 BAMBOO_URL = os.environ.get("BAMBOO_URL", "http://localhost:8085")
 AGENT_HOME = Path(
@@ -50,7 +50,7 @@ def seed_capability(caps_file: Path):
 def registry_dir_env(env: dict) -> dict:
     """Hand every job this agent runs one registry location, unless already set.
 
-    Jobs inherit this process's environment, which is the only way both PROV and
+    Jobs inherit this process's environment, which is one way both PROV and
     DEPROV — separate checkouts — can agree on where the cluster info files live.
     """
     if env.get("FORGELAB_REGISTRY_DIR"):
@@ -58,10 +58,25 @@ def registry_dir_env(env: dict) -> dict:
     return {**env, "FORGELAB_REGISTRY_DIR": str(CLONE_ROOT / "cluster_registered")}
 
 
+def seed_registry_pointer(pointer: Path, registry: str):
+    """Record the registry location on the host, not just in this agent's env.
+
+    An agent started before this file existed, or by hand, still resolves the
+    right directory — forgelab.paths reads the pointer when the variable is
+    absent. Without it the registry silently depends on how the JVM was launched.
+    """
+    pointer.parent.mkdir(parents=True, exist_ok=True)
+    if pointer.is_file() and pointer.read_text().strip() == registry:
+        return
+    pointer.write_text(f"{registry}\n")
+    print(f"Seeded cluster registry location in {pointer}")
+
+
 def main(argv):
     proc.require_tools(*REQUIRED_TOOLS)
     seed_capability(AGENT_HOME / "bin" / "bamboo-capabilities.properties")
     os.environ.update(registry_dir_env(dict(os.environ)))
+    seed_registry_pointer(paths.REGISTRY_POINTER, os.environ["FORGELAB_REGISTRY_DIR"])
     print(f"Cluster registry: {os.environ['FORGELAB_REGISTRY_DIR']}")
 
     # Agent home is set via the -Dbamboo.home property (before -jar), not a flag.

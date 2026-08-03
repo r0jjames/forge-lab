@@ -135,19 +135,30 @@ in that module) and `REGISTRY_DIR`.
 
 ### Where the registry actually lives
 
-`REGISTRY_DIR` is `$FORGELAB_REGISTRY_DIR` when set, `REPO_ROOT/cluster_registered`
-otherwise. The repo-relative default is only correct outside CI: Bamboo gives
-every plan its own checkout under
-`~/.forgelab/bamboo-agent-home/xml-data/build-dir/FORGE-<PLAN>-JOB1`, so a
-repo-relative registry would write into a throwaway directory, and DEPROV's
-cleanup would target a different one than PROV wrote to.
+`paths.registry_dir()` resolves, in order:
 
-`run_agent.py` therefore exports `FORGELAB_REGISTRY_DIR` pointing at
-`<the clone the agent was started from>/cluster_registered` before exec'ing the
-JVM. Jobs inherit the agent's environment, so PROV, DEPROV and a hand-run
-`make provision` all converge on the one durable working copy. Nothing
+1. `$FORGELAB_REGISTRY_DIR` — an explicit override for one run
+2. `~/.forgelab/registry_dir` — a one-line file naming the host's durable clone
+3. `REPO_ROOT/cluster_registered` — the checkout, for a hand-run `make provision`
+
+The repo-relative default is only correct outside CI: Bamboo gives every plan
+its own checkout under
+`~/.forgelab/bamboo-agent-home/xml-data/build-dir/FORGE-<PLAN>-JOB1`, so a
+repo-relative registry writes into a throwaway directory, and DEPROV's cleanup
+targets a different one than PROV wrote to.
+
+`run_agent.py` both exports `FORGELAB_REGISTRY_DIR` (jobs inherit the agent's
+environment) and writes the pointer file, in each case naming
+`<the clone the agent was started from>/cluster_registered`. Nothing
 machine-specific is committed — the path is derived from the agent script's own
 location.
+
+The pointer file exists because the agent is long-lived. An agent already
+running when this shipped has none of the new environment, and so would keep
+writing into its build directory until someone restarted it; a registry whose
+location depends on how the JVM happened to be launched is a trap. The file is
+read per run, so an agent that has been up for hours picks up the right
+directory on its next build.
 
 `tfvars.py` gains a generic `parse(text) -> dict` for the `key = value` lines;
 `parse_cluster_type` becomes a lookup on it.

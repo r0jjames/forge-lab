@@ -22,22 +22,40 @@ ANSIBLE_CFG = ANSIBLE_DIR / "ansible.cfg"
 SITE_YML = ANSIBLE_DIR / "site.yml"
 INV_DIR = ANSIBLE_DIR / "inventory"
 
-# Tracked, unlike the generated inventory: one file per live cluster, written by
-# provision and removed by deprovision.
-#
-# REPO_ROOT is only the right answer outside CI. Bamboo gives every plan its own
-# checkout (xml-data/build-dir/FORGE-PROV-JOB1, ...-DEPROV-JOB1), so a
-# repo-relative registry would land in an ephemeral directory nobody looks at,
-# and deprovision would try to delete from a different one than provision wrote.
-# FORGELAB_REGISTRY_DIR points both plans at one durable clone; run_agent.py sets
-# it to the clone the agent was started from.
-REGISTRY_DIR = Path(
-    os.environ.get("FORGELAB_REGISTRY_DIR", REPO_ROOT / "cluster_registered")
-)
-
 FORGELAB_HOME = Path.home() / ".forgelab"
 SSH_KEY = FORGELAB_HOME / "id_ed25519"
 SSH_CONF_DIR = FORGELAB_HOME / "ssh_config.d"
+# One line: where the cluster registry lives on this host. See registry_dir().
+REGISTRY_POINTER = FORGELAB_HOME / "registry_dir"
+
+
+def registry_dir() -> Path:
+    """Where the per-cluster info files live, in order of precedence.
+
+    REPO_ROOT is only right outside CI. Bamboo gives every plan its own checkout
+    (xml-data/build-dir/FORGE-PROV-JOB1, ...-DEPROV-JOB1), so a repo-relative
+    registry lands in an ephemeral directory nobody looks at, and deprovision
+    deletes from a different one than provision wrote to.
+
+    1. $FORGELAB_REGISTRY_DIR — an explicit override for one run.
+    2. ~/.forgelab/registry_dir — the host's durable answer, seeded by
+       run_agent.py. A file rather than the agent's environment because the
+       agent is long-lived: a registry that only works when someone remembered
+       how to launch the JVM is a trap.
+    3. This checkout, which is what a hand-run `make provision` should use.
+    """
+    override = os.environ.get("FORGELAB_REGISTRY_DIR")
+    if override:
+        return Path(override)
+    if REGISTRY_POINTER.is_file():
+        pointed = REGISTRY_POINTER.read_text().strip()
+        if pointed:
+            return Path(pointed)
+    return REPO_ROOT / "cluster_registered"
+
+
+# Resolved once per process, which is all an entrypoint ever is.
+REGISTRY_DIR = registry_dir()
 
 
 def ansible_env(env: dict) -> dict:
