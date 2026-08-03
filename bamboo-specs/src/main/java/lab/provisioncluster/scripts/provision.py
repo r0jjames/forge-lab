@@ -4,11 +4,15 @@
 import os
 import re
 import sys
+import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
-from forgelab import inventory, multipass, paths, proc, sshconf, terraform  # noqa: E402
+from forgelab import (  # noqa: E402
+    inventory, multipass, paths, proc, registry, sshconf, terraform,
+)
 from forgelab import tfvars as tfvars_mod  # noqa: E402
 
 CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
@@ -64,12 +68,14 @@ def main(argv):
     print(f"==> inventory: {inv}")
     sshconf.write(cluster, inventory.parse_hosts(inv.read_text()))
 
-    # Stage 3: Install
+    # Stage 3: Install. The roles report what they installed into this file.
+    report = Path(tempfile.mkdtemp(prefix="forgelab-")) / "components.json"
     proc.run(
         "ansible-playbook",
         paths.SITE_YML,
         "-i", inv,
         "-e", f"cluster_type={cluster_type}",
+        "-e", f"component_report={report}",
         env=paths.ansible_env(os.environ),
     )
 
@@ -79,6 +85,17 @@ def main(argv):
         Path(__file__).resolve().parent / "verify.py",
         cluster,
         cluster_type,
+    )
+
+    # Stage 5: Register. Last, so the registry only lists healthy clusters.
+    registry.write(
+        cluster,
+        cluster_type,
+        datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        registry.nodes_from(
+            inventory.parse_hosts(inv.read_text()), tfvars_mod.parse(tfvars.read_text())
+        ),
+        registry.read_components(report),
     )
     print(f"==> cluster '{cluster}' provisioned and verified")
 

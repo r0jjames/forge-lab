@@ -38,3 +38,17 @@ def test_parse_cluster_type_ignores_other_keys():
 
 def test_parse_cluster_type_is_empty_when_unquoted():
     assert tfvars_mod.parse_cluster_type("cluster_type = k8s\n") == ""
+
+
+def test_parse_returns_every_key_unquoted():
+    text = 'cluster_type  = "k8s"\nmgmt_count    = 1\nmgmt_mem      = "4G"\n'
+    assert tfvars_mod.parse(text) == {
+        "cluster_type": "k8s",
+        "mgmt_count": "1",
+        "mgmt_mem": "4G",
+    }
+
+
+def test_parse_ignores_comments_and_blank_lines():
+    text = '# sizing\n\nmgmt_cpu = 2  # bump me\n'
+    assert tfvars_mod.parse(text) == {"mgmt_cpu": "2"}

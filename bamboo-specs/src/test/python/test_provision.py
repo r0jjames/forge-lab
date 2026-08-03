@@ -33,8 +33,9 @@ def lab(tmp_path, monkeypatch):
             ]
 
     tfvars = tmp_path / "lab1.tfvars"
-    tfvars.write_text('cluster_type  = "k8s"\n')
+    tfvars.write_text('cluster_type  = "k8s"\nmgmt_mem      = "4G"\n')
     inv_dir = tmp_path / "inventory"
+    registry_dir = tmp_path / "cluster_registered"
 
     monkeypatch.setattr(provision, "multipass", FakeMultipass())
     monkeypatch.setattr(provision, "terraform", FakeTerraform())
@@ -47,9 +48,25 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setattr(
         provision.proc, "run", lambda *a, **kw: calls.append(("run", str(a[0])))
     )
+    monkeypatch.setattr(provision.registry.paths, "REGISTRY_DIR", registry_dir)
+    real_write = provision.registry.write
+
+    def spy_write(*args, **kwargs):
+        calls.append(("registry", args[0]))
+        return real_write(*args, **kwargs)
+
+    monkeypatch.setattr(provision.registry, "write", spy_write)
 
     return type(
-        "Lab", (), {"calls": calls, "existing": existing, "tfvars": tfvars, "inv_dir": inv_dir}
+        "Lab",
+        (),
+        {
+            "calls": calls,
+            "existing": existing,
+            "tfvars": tfvars,
+            "inv_dir": inv_dir,
+            "registry_dir": registry_dir,
+        },
     )
 
 
@@ -101,6 +118,44 @@ def test_runs_the_stages_in_order(lab):
 def test_writes_the_inventory_before_running_ansible(lab):
     provision.main(["lab1"])
     assert (lab.inv_dir / "lab1.ini").is_file()
+
+
+def test_registers_the_cluster_only_after_verify(lab):
+    provision.main(["lab1"])
+    kinds = [c[0] for c in lab.calls]
+    # two runs: ansible-playbook, then verify.py — registration comes after both
+    assert kinds.index("registry") > len(kinds) - 2
+    assert kinds[-1] == "registry"
+
+
+def test_writes_the_cluster_info_file(lab):
+    provision.main(["lab1"])
+    info = (lab.registry_dir / "lab1_cluster_info.yml").read_text()
+    assert "cluster: lab1" in info
+    assert "ip: 192.168.252.10" in info
+    assert "mem: 4G" in info
+
+
+def test_leaves_no_cluster_info_when_verify_fails(lab, monkeypatch):
+    def fail_on_verify(*args, **kwargs):
+        calls = [str(a) for a in args]
+        if calls[0] != "ansible-playbook":
+            raise provision.proc.LabError("nodes not all Ready within timeout")
+
+    monkeypatch.setattr(provision.proc, "run", fail_on_verify)
+    with pytest.raises(provision.proc.LabError):
+        provision.main(["lab1"])
+    assert not (lab.registry_dir / "lab1_cluster_info.yml").exists()
+
+
+def test_tells_ansible_where_to_report_components(lab, monkeypatch):
+    recorded = []
+    monkeypatch.setattr(
+        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
+    )
+    provision.main(["lab1"])
+    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
+    assert any(arg.startswith("component_report=") for arg in ansible)
 
 
 def test_passes_the_resolved_cluster_type_to_ansible(lab, monkeypatch):

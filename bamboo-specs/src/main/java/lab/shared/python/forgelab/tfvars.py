@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from . import paths
 from .proc import die
+
+_ASSIGN_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$')
 
 
 def resolve(cluster: str) -> Path:
@@ -19,15 +22,31 @@ def resolve(cluster: str) -> Path:
     die("no tfvars found (need lab/shared/clusters/defaults.tfvars)")
 
 
+def _assignments(text: str):
+    """(key, raw value) for every `key = value` line, comments stripped."""
+    for line in text.splitlines():
+        match = _ASSIGN_RE.match(line.split("#", 1)[0])
+        if match:
+            yield match.group(1), match.group(2).strip()
+
+
+def parse(text: str) -> dict:
+    """key -> value for every `key = value` line, with strings unquoted.
+
+    These files only ever hold flat scalars (sizes, counts, cluster_type), so a
+    line parser is enough; nothing here handles lists, maps or heredocs.
+    """
+    return {key: raw.strip('"') for key, raw in _assignments(text)}
+
+
 def parse_cluster_type(text: str) -> str:
     """Read `cluster_type = "k8s"` out of a tfvars file's contents.
 
-    Returns "" when the key is absent — the caller reports that as an invalid
-    cluster_type, naming the file it came from.
+    Returns "" when the key is absent or unquoted — terraform would reject the
+    unquoted form as well, and the caller already reports an empty cluster_type
+    as invalid, naming the file it came from.
     """
-    for line in text.splitlines():
-        if line.startswith("cluster_type"):
-            parts = line.split('"')
-            if len(parts) >= 2:
-                return parts[1]
+    for key, raw in _assignments(text):
+        if key == "cluster_type":
+            return raw[1:-1] if raw.startswith('"') and raw.endswith('"') else ""
     return ""

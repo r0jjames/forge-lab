@@ -46,13 +46,23 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setattr(deprovision, "multipass", fake_mp)
     monkeypatch.setattr(deprovision.proc, "require_tools", lambda *_: None)
     monkeypatch.setattr(deprovision.tfvars_mod, "resolve", lambda _: tmp_path / "x.tfvars")
+    registry_dir = tmp_path / "cluster_registered"
+    registry_dir.mkdir()
     monkeypatch.setattr(deprovision.paths, "INV_DIR", inv_dir)
     monkeypatch.setattr(deprovision.sshconf.paths, "SSH_CONF_DIR", ssh_dir)
+    monkeypatch.setattr(deprovision.paths, "REGISTRY_DIR", registry_dir)
 
     return type(
         "Lab",
         (),
-        {"calls": calls, "tf": fake_tf, "mp": fake_mp, "inv_dir": inv_dir, "ssh_dir": ssh_dir},
+        {
+            "calls": calls,
+            "tf": fake_tf,
+            "mp": fake_mp,
+            "inv_dir": inv_dir,
+            "ssh_dir": ssh_dir,
+            "registry_dir": registry_dir,
+        },
     )
 
 
@@ -98,6 +108,14 @@ def test_removes_the_generated_inventory_and_ssh_config(lab):
     deprovision.main(["lab1"])
     assert not (lab.inv_dir / "lab1.ini").exists()
     assert not (lab.ssh_dir / "lab1.conf").exists()
+
+
+def test_removes_the_cluster_info_file(lab):
+    (lab.registry_dir / "lab1_cluster_info.yml").write_text("cluster: lab1\n")
+    (lab.registry_dir / "lab2_cluster_info.yml").write_text("cluster: lab2\n")
+    deprovision.main(["lab1"])
+    assert not (lab.registry_dir / "lab1_cluster_info.yml").exists()
+    assert (lab.registry_dir / "lab2_cluster_info.yml").exists()
 
 
 def test_tolerates_already_missing_generated_files(lab):

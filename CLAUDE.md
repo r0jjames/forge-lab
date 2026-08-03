@@ -29,7 +29,9 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 - `make provision CLUSTER=lab1 [TYPE=k8s|dcos]` / `make deprovision CLUSTER=lab1`
   — provision also writes `~/.forgelab/ssh_config.d/<cluster>.conf` (included
   from `~/.ssh/config`) so `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu`
-  with the lab key; deprovision removes it
+  with the lab key; deprovision removes it. Provision also writes
+  `cluster_registered/<cluster>_cluster_info.yml` (tracked, uncommitted) as its
+  last step; deprovision deletes it
 - `make lint` — pytest + terraform fmt/validate + ansible-lint + mvn test
   (pytest is a host tool like shellcheck was: `uv tool install pytest`)
 
@@ -46,6 +48,10 @@ one directory per Bamboo plan, holding its spec AND the code it runs:
   `ansible/`, `clusters/<name>.tfvars` (sizing; `defaults.tfvars` fallback)
 - `infra/` — lab operations NOT run by any plan: `helm/` chart values,
   `agent/` host-agent install+run, `scripts/` license fetch
+- `cluster_registered/` — generated output, tracked, owned by PROV/DEPROV:
+  `<cluster>_cluster_info.yml` (IPs, sizing, ssh hints, installed components)
+  written by provision after verify passes, deleted by deprovision. The
+  pipeline never commits it — you do
 - Python and Terraform inside a Maven source root is deliberate — one lookup
   per plan. Maven compiles `.java` and ignores the rest.
 - `infra/` may import `forgelab` and nothing else under `lab/`; the dependency

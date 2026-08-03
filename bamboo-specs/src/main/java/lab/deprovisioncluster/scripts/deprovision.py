@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
-from forgelab import multipass, paths, proc, sshconf, terraform  # noqa: E402
+from forgelab import multipass, paths, proc, registry, sshconf, terraform  # noqa: E402
 from forgelab import tfvars as tfvars_mod  # noqa: E402
 
 CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
@@ -37,9 +37,10 @@ def main(argv):
     if leftovers:
         multipass.delete_purge(leftovers)
 
-    # 3. Remove generated inventory + ssh config
+    # 3. Remove generated inventory + ssh config + registry entry
     (paths.INV_DIR / f"{cluster}.ini").unlink(missing_ok=True)
     sshconf.remove(cluster)
+    registry.remove(cluster)
     print(f"==> cluster '{cluster}' fully deprovisioned")
 
 

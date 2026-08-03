@@ -40,6 +40,7 @@ the rest, so nothing here affects the build.
 | `multipass.py` | the VM backend seam — parse `multipass list`, purge VMs    |
 | `inventory.py` | render the ansible inventory, read hosts back out          |
 | `sshconf.py`   | per-cluster `~/.forgelab/ssh_config.d/<cluster>.conf`      |
+| `registry.py`  | `cluster_registered/<cluster>_cluster_info.yml`            |
 
 Parsing and rendering are pure functions taking and returning strings; every
 external command goes through `proc.run`. That split is what makes the tests
@@ -84,4 +85,9 @@ plan → plan.
   `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.py`.
 - Standard library only. The host agent has no venv; whatever an entrypoint
   imports must ship with python3.
+- An ansible role that installs something ends its `tasks/main.yml` by
+  appending `{'name': ..., 'version': ...}` to the `forgelab_components` fact.
+  `site.yml`'s last play writes the collected list to `component_report`, and
+  `provision.py` renders it into the cluster's info file. That is the only way
+  a component reaches `cluster_registered/`; no Python knows the list.
 - Tests live in `src/test/python/`, run by `make lint`.

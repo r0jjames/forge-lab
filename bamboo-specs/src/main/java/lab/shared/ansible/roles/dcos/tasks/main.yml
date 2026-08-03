@@ -5,3 +5,10 @@
 
 - name: Install DC/OS node role
   ansible.builtin.import_tasks: node.yml
+
+# See the same task in roles/k8s: this is how a role gets into the cluster's
+# info file, and why the fact is not dcos_-prefixed.
+- name: Report installed components  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    forgelab_components: >-
+      {{ forgelab_components | default([]) + [{'name': 'dcos', 'version': dcos_version}] }}

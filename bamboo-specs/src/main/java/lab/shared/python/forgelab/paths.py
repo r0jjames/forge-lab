@@ -11,6 +11,8 @@ from pathlib import Path
 
 # .../lab/shared/python/forgelab/paths.py -> .../lab/shared
 SHARED_DIR = Path(__file__).resolve().parents[2]
+# .../<repo>/bamboo-specs/src/main/java/lab/shared -> <repo>
+REPO_ROOT = SHARED_DIR.parents[5]
 
 TF_DIR = SHARED_DIR / "terraform"
 CLUSTERS_DIR = SHARED_DIR / "clusters"
@@ -18,6 +20,10 @@ ANSIBLE_DIR = SHARED_DIR / "ansible"
 ANSIBLE_CFG = ANSIBLE_DIR / "ansible.cfg"
 SITE_YML = ANSIBLE_DIR / "site.yml"
 INV_DIR = ANSIBLE_DIR / "inventory"
+
+# Tracked, unlike the generated inventory: one file per live cluster, written by
+# provision and removed by deprovision.
+REGISTRY_DIR = REPO_ROOT / "cluster_registered"
 
 FORGELAB_HOME = Path.home() / ".forgelab"
 SSH_KEY = FORGELAB_HOME / "id_ed25519"

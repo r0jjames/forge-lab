@@ -9,3 +9,13 @@
 - name: Join worker to cluster
   ansible.builtin.import_tasks: join.yml
   when: inventory_hostname != groups['mgmt'][0]
+
+# The role declares what it installed; site.yml's last play collects the facts
+# and provision.py copies them into the cluster's info file. Version is omitted
+# for anything the lab does not pin. The fact is deliberately not k8s_-prefixed:
+# every role appends to this one list, hence the noqa.
+- name: Report installed components  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    forgelab_components: >-
+      {{ forgelab_components | default([]) + [{'name': 'kubernetes', 'version': k8s_version},
+      {'name': 'containerd'}, {'name': 'flannel', 'version': 'latest'}] }}

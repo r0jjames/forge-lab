@@ -5,6 +5,7 @@ import com.atlassian.bamboo.specs.api.builders.BambooKey;
 import com.atlassian.bamboo.specs.api.builders.plan.Job;
 import com.atlassian.bamboo.specs.api.builders.plan.Plan;
 import com.atlassian.bamboo.specs.api.builders.plan.Stage;
+import com.atlassian.bamboo.specs.api.builders.plan.artifact.Artifact;
 import com.atlassian.bamboo.specs.api.builders.plan.configuration.ConcurrentBuilds;
 import com.atlassian.bamboo.specs.api.builders.project.Project;
 import com.atlassian.bamboo.specs.api.builders.requirement.Requirement;
@@ -39,6 +40,14 @@ public class ProvisionClusterSpec {
                                 // k8s agent (agent.role=ci), which has none of them.
                                 .requirements(new Requirement("agent.role")
                                         .matchValue("host").matchType(Requirement.MatchType.EQUALS))
+                                // provision.py writes the cluster's info file into the working
+                                // copy; publishing it makes the addresses and component list
+                                // readable from the build result, without a checkout.
+                                .artifacts(new Artifact().name("cluster-info")
+                                        .location("cluster_registered")
+                                        .copyPattern("*_cluster_info.yml")
+                                        .shared(true)
+                                        .required(false))
                                 .tasks(
                                 new VcsCheckoutTask().description("checkout")
                                         .checkoutItems(new CheckoutItem().defaultRepository()),

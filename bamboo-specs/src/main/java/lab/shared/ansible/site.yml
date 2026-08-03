@@ -18,3 +18,19 @@
   roles:
     - role: dcos
       when: cluster_type == "dcos"
+
+# Hand the component facts the roles set back to provision.py, which renders
+# them into cluster_registered/<cluster>_cluster_info.yml. Runs on one host
+# because the facts are identical everywhere; writes on the control node.
+- name: Record installed components
+  hosts: mgmt[0]
+  gather_facts: false
+  become: false
+  tasks:
+    - name: Write the component report for the provision script
+      ansible.builtin.copy:
+        content: "{{ forgelab_components | default([]) | to_nice_json }}\n"
+        dest: "{{ component_report }}"
+        mode: "0644"
+      delegate_to: localhost
+      when: component_report | default('') | length > 0
