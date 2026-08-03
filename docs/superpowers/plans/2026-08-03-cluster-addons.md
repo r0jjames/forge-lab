@@ -304,7 +304,7 @@ git commit -m "refactor: group-driven inventory rendering with a k8s_nodes group
 **Files:**
 - Modify: `bamboo-specs/src/main/java/lab/shared/python/forgelab/tfvars.py`
 - Modify: `bamboo-specs/src/main/java/lab/provisioncluster/scripts/provision.py`
-- Test: `bamboo-specs/src/test/python/test_tfvars.py` (create)
+- Test: `bamboo-specs/src/test/python/test_tfvars.py` (exists — **append**, never overwrite: it holds 8 passing tests for `resolve` and `parse_cluster_type`)
 - Test: `bamboo-specs/src/test/python/test_provision.py`
 
 **Interfaces:**
@@ -316,37 +316,36 @@ git commit -m "refactor: group-driven inventory rendering with a k8s_nodes group
 
 - [ ] **Step 1: Write the failing tfvars tests**
 
-Create `bamboo-specs/src/test/python/test_tfvars.py`:
+`bamboo-specs/src/test/python/test_tfvars.py` already exists and holds 8 passing
+tests. **Append** these to it; do not overwrite the file. It already imports
+`tfvars as tfvars_mod` — use that name rather than adding a second import.
 
 ```python
-from forgelab import tfvars
-
-
 def test_parse_addons_splits_the_comma_list():
     text = 'addons = "keycloak,hdfs,splunk"\n'
-    assert tfvars.parse_addons(text) == ["keycloak", "hdfs", "splunk"]
+    assert tfvars_mod.parse_addons(text) == ["keycloak", "hdfs", "splunk"]
 
 
 def test_parse_addons_tolerates_spaces_and_trailing_commas():
     text = 'addons = "keycloak, hdfs ,"\n'
-    assert tfvars.parse_addons(text) == ["keycloak", "hdfs"]
+    assert tfvars_mod.parse_addons(text) == ["keycloak", "hdfs"]
 
 
 def test_parse_addons_is_empty_when_the_value_is_empty():
-    assert tfvars.parse_addons('addons = ""\n') == []
+    assert tfvars_mod.parse_addons('addons = ""\n') == []
 
 
 def test_parse_addons_is_empty_when_the_key_is_absent():
-    assert tfvars.parse_addons('cluster_type = "k8s"\n') == []
+    assert tfvars_mod.parse_addons('cluster_type = "k8s"\n') == []
 
 
 def test_parse_addons_ignores_a_commented_line():
-    assert tfvars.parse_addons('# addons = "splunk"\n') == []
+    assert tfvars_mod.parse_addons('# addons = "splunk"\n') == []
 
 
-def test_parse_still_reads_the_sizing_scalars():
+def test_parse_still_reads_the_new_sizing_scalars():
     text = 'addons = "hdfs"\ndata_mem = "4G"\ndata_count = 3\n'
-    parsed = tfvars.parse(text)
+    parsed = tfvars_mod.parse(text)
     assert parsed["data_mem"] == "4G"
     assert parsed["data_count"] == "3"
 ```
@@ -374,7 +373,7 @@ def parse_addons(text: str) -> list:
 - [ ] **Step 4: Run to verify they pass**
 
 Run: `pytest bamboo-specs/src/test/python/test_tfvars.py -v`
-Expected: PASS (6 tests).
+Expected: PASS — 14 tests (8 pre-existing plus the 6 added).
 
 - [ ] **Step 5: Write the failing provision tests**
 
@@ -1452,7 +1451,7 @@ Two gaps in the base cluster, neither of them an addon. There is no StorageClass
 - Create: `bamboo-specs/src/main/java/lab/shared/ansible/roles/k8s/tasks/k9s.yml`
 - Create: `bamboo-specs/src/main/java/lab/shared/ansible/roles/k8s/tasks/storage.yml`
 - Modify: `bamboo-specs/src/main/java/lab/provisioncluster/scripts/verify.py`
-- Test: `bamboo-specs/src/test/python/test_verify.py` (create)
+- Test: `bamboo-specs/src/test/python/test_verify.py` (exists — **append**, never overwrite: it holds 5 passing `nodes_ready` tests, including a `Ready,SchedulingDisabled` case)
 
 **Interfaces:**
 - Produces: `verify.default_storage_class(text: str) -> str` — the name of the default StorageClass in `kubectl get sc --no-headers` output, or `""`.
@@ -1460,12 +1459,12 @@ Two gaps in the base cluster, neither of them an addon. There is no StorageClass
 
 - [ ] **Step 1: Write the failing test**
 
-Create `bamboo-specs/src/test/python/test_verify.py`:
+`bamboo-specs/src/test/python/test_verify.py` already exists and holds 5 passing
+`nodes_ready` tests. **Append** these; do not overwrite. It already has
+`import verify` at the top — do not add a second one, and do not add further
+`nodes_ready` cases, which are covered.
 
 ```python
-import verify
-
-
 def test_default_storage_class_finds_the_annotated_one():
     text = (
         "local-path (default)   rancher.io/local-path   Delete   "
@@ -1483,20 +1482,16 @@ def test_default_storage_class_is_empty_when_there_are_no_classes():
     assert verify.default_storage_class("") == ""
 
 
-def test_nodes_ready_still_accepts_a_healthy_cluster():
-    text = "lab1-mgmt-1 Ready control-plane 5m v1.30.0\nlab1-compute-1 Ready <none> 3m v1.30.0\n"
-    assert verify.nodes_ready(text) is True
-
-
-def test_nodes_ready_rejects_a_notready_node():
-    text = "lab1-mgmt-1 Ready control-plane 5m v1.30.0\nlab1-compute-1 NotReady <none> 3m v1.30.0\n"
-    assert verify.nodes_ready(text) is False
+def test_default_storage_class_ignores_a_provisioner_named_default():
+    text = "fast   example.io/default   Delete   Immediate   false   3m\n"
+    assert verify.default_storage_class(text) == ""
 ```
 
 - [ ] **Step 2: Run to verify it fails**
 
 Run: `pytest bamboo-specs/src/test/python/test_verify.py -v`
-Expected: FAIL — `default_storage_class` does not exist.
+Expected: FAIL — `default_storage_class` does not exist. The 5 pre-existing
+`nodes_ready` tests must still pass.
 
 - [ ] **Step 3: Add the parser and extend the k8s check**
 
@@ -1535,7 +1530,7 @@ loop's `else:` clause.
 - [ ] **Step 4: Run to verify it passes**
 
 Run: `pytest bamboo-specs/src/test/python/test_verify.py -v`
-Expected: PASS (5 tests).
+Expected: PASS — 9 tests (5 pre-existing plus the 4 added).
 
 - [ ] **Step 5: Add the role defaults**
 
