@@ -1,5 +1,8 @@
 """Validation gates and stage order for provision, with externals stubbed."""
 
+import json
+from pathlib import Path
+
 import pytest
 
 import provision
@@ -42,6 +45,10 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setattr(provision.proc, "require_tools", lambda *_: None)
     monkeypatch.setattr(provision.tfvars_mod, "resolve", lambda _: tfvars)
     monkeypatch.setattr(provision.paths, "INV_DIR", inv_dir)
+    # Same forgelab.paths module install.py and credentials.py read from too —
+    # without this, install.run()'s credentials.write() would land in the
+    # real ~/.forgelab instead of the test's tmp_path.
+    monkeypatch.setattr(provision.paths, "FORGELAB_HOME", tmp_path / "home")
     monkeypatch.setattr(
         provision.sshconf, "write", lambda c, h: calls.append(("ssh", c, tuple(h)))
     )
@@ -148,24 +155,37 @@ def test_leaves_no_cluster_info_when_verify_fails(lab, monkeypatch):
     assert not (lab.registry_dir / "lab1_cluster_info.yml").exists()
 
 
+def _capture_extra_vars(monkeypatch):
+    """Patch install's ansible-playbook call and return the payload the
+    caller's fake `run` records — read from the @varsfile JSON while the file
+    still exists, since install.run() deletes it in a `finally` block.
+
+    provision.install.proc and provision.proc are the same forgelab.proc
+    module object, so this fake also receives Stage 4's verify.py call; it
+    only has a "@varsfile" arg on the ansible-playbook call, so anything else
+    is left alone (a no-op stand-in, same as the rest of the suite's fakes).
+    """
+    seen = {}
+
+    def fake_run(*args, **kwargs):
+        varsfile = next((str(a)[1:] for a in args if str(a).startswith("@")), None)
+        if varsfile is not None:
+            seen["payload"] = json.loads(Path(varsfile).read_text())
+
+    monkeypatch.setattr(provision.install.proc, "run", fake_run)
+    return seen
+
+
 def test_tells_ansible_where_to_report_components(lab, monkeypatch):
-    recorded = []
-    monkeypatch.setattr(
-        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
-    )
+    seen = _capture_extra_vars(monkeypatch)
     provision.main(["lab1"])
-    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
-    assert any(arg.startswith("component_report=") for arg in ansible)
+    assert "component_report" in seen["payload"]
 
 
 def test_passes_the_resolved_cluster_type_to_ansible(lab, monkeypatch):
-    recorded = []
-    monkeypatch.setattr(
-        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
-    )
+    seen = _capture_extra_vars(monkeypatch)
     provision.main(["lab1", "dcos"])
-    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
-    assert "cluster_type=dcos" in ansible
+    assert seen["payload"]["cluster_type"] == "dcos"
 
 
 def test_resolve_addons_reads_the_tfvars_file():
@@ -203,24 +223,16 @@ def test_resolve_addons_names_the_known_addons_in_the_error():
 
 def test_passes_the_resolved_addons_to_ansible(lab, monkeypatch):
     lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
-    recorded = []
-    monkeypatch.setattr(
-        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
-    )
+    seen = _capture_extra_vars(monkeypatch)
     provision.main(["lab1"])
-    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
-    assert "addons=hdfs" in ansible
+    assert seen["payload"]["addons"] == "hdfs"
 
 
 def test_addons_argument_overrides_the_tfvars_file(lab, monkeypatch):
     lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
-    recorded = []
-    monkeypatch.setattr(
-        provision.proc, "run", lambda *a, **kw: recorded.append([str(x) for x in a])
-    )
+    seen = _capture_extra_vars(monkeypatch)
     provision.main(["lab1", "", "keycloak"])
-    ansible = next(c for c in recorded if c[0] == "ansible-playbook")
-    assert "addons=keycloak" in ansible
+    assert seen["payload"]["addons"] == "keycloak"
 
 
 def test_node_count_overrides_zeroes_every_role_when_no_addons():

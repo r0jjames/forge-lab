@@ -1,19 +1,19 @@
 #!/usr/bin/env python3
 """Provision a lab cluster: validate, terraform apply, install, verify."""
 
-import os
 import re
 import sys
-import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
 from forgelab import (  # noqa: E402
-    inventory, multipass, paths, proc, registry, sshconf, terraform,
+    credentials, inventory, multipass, paths, proc, registry, sshconf, terraform,
 )
 from forgelab import tfvars as tfvars_mod  # noqa: E402
+
+import install  # noqa: E402
 
 CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
 CLUSTER_TYPES = ("k8s", "dcos")
@@ -118,16 +118,7 @@ def main(argv):
     sshconf.write(cluster, inventory.parse_hosts(inv.read_text()))
 
     # Stage 3: Install. The roles report what they installed into this file.
-    report = Path(tempfile.mkdtemp(prefix="forgelab-")) / "components.json"
-    proc.run(
-        "ansible-playbook",
-        paths.SITE_YML,
-        "-i", inv,
-        "-e", f"cluster_type={cluster_type}",
-        "-e", f"addons={','.join(addons)}",
-        "-e", f"component_report={report}",
-        env=paths.ansible_env(os.environ),
-    )
+    report = install.run(cluster, cluster_type, addons)
 
     # Stage 4: Verify
     proc.run(
@@ -146,6 +137,9 @@ def main(argv):
             inventory.parse_hosts(inv.read_text()), tfvars_mod.parse(tfvars.read_text())
         ),
         registry.read_components(report),
+        credentials=(
+            credentials.path(cluster) if credentials.path(cluster).is_file() else ""
+        ),
     )
     print(f"==> cluster '{cluster}' provisioned and verified")
 
