@@ -134,13 +134,13 @@ Then, once Bamboo is licensed and reachable:
 # 4. Get an agent token, then install and start the host-local Bamboo agent
 #    Bamboo UI → Administration → Agents → "Install remote agent" shows the
 #    token (enable "security token verification" there first if prompted);
-#    export it before running install-agent.sh:
+#    export it before running install_agent.py:
 export AGENT_TOKEN=<token from the UI>
 make agent-install
 make agent-run
 ```
 
-`install-agent.sh` copies the installer jar straight out of the Bamboo
+`install_agent.py` copies the installer jar straight out of the Bamboo
 server pod with `kubectl cp` (the jar isn't downloadable without an admin
 login, but it's right there in the pod), then runs it against
 `/agentServer/` with your token. Overridable via `BAMBOO_NAMESPACE`
@@ -148,9 +148,9 @@ login, but it's right there in the pod), then runs it against
 (Rancher Desktop provides it) and a JDK on `PATH`.
 
 Leave `make agent-run` running in its own terminal (or under `launchd` —
-see `infra/agent/run-agent.sh`); it needs to stay up for plans to build.
+see `infra/agent/run_agent.py`); it needs to stay up for plans to build.
 
-`run-agent.sh` also seeds the capability `agent.role=host` into
+`run_agent.py` also seeds the capability `agent.role=host` into
 `<agent-home>/bin/bamboo-capabilities.properties`. The Provision/Deprovision
 plans declare a matching **requirement**, which is what keeps the multipass
 toolchain jobs off the containerized k8s agent (`agent.role=ci`, no terraform
@@ -221,7 +221,7 @@ make provision CLUSTER=lab1 TYPE=dcos    # override cluster_type from the tfvars
 
 What happens, stage by stage (whether triggered via `make` or via the
 Bamboo `ProvisionClusterPlan`, since both call the same
-`lab/<planid>/scripts/*.sh`):
+`lab/<planid>/scripts/*.py`):
 
 1. **Validate** — checks `cluster_name` matches `[a-z0-9-]+`; refuses if
    `multipass list` already shows `<name>-` prefixed VMs; resolves config
@@ -245,6 +245,63 @@ Bamboo `ProvisionClusterPlan`, since both call the same
    cached locally.
 4. **Verify** — k8s: all nodes reach `Ready`. dcos: UI health endpoint
    responds OK. The pipeline fails if verification doesn't pass.
+5. **Register** — writes `cluster_registered/<name>_cluster_info.yml` (see
+   below). Last on purpose: a cluster that failed verification never gets an
+   entry.
+
+### Cluster info files (`cluster_registered/`)
+
+A successful provision leaves one YAML file per live cluster — where to ssh,
+how the nodes are sized, and what got installed:
+
+```yaml
+# cluster_registered/lab1_cluster_info.yml
+cluster: lab1
+type: k8s
+provisioned_at: "2026-08-03T12:20:25Z"
+ssh:
+  user: ubuntu
+  key: "~/.forgelab/id_ed25519"
+  example: ssh lab1-mgmt-1
+nodes:
+  - name: lab1-mgmt-1
+    role: mgmt
+    ip: 192.168.252.10
+    cpu: "2"
+    mem: 4G
+    disk: 20G
+  # ... one entry per compute node
+components:
+  - name: kubernetes
+    version: "1.30"
+  - name: containerd
+  - name: flannel
+    version: latest
+```
+
+`make deprovision` deletes the file, so the directory listing is the list of
+clusters that exist. The files are tracked but **nothing commits them for you**
+— a provision or teardown shows up in `git status` and you commit it if you
+want that cluster in history. The PROV plan additionally publishes the file as
+the `cluster-info` build artifact.
+
+The components list comes from Ansible, not from Python: each role appends to a
+`forgelab_components` fact and the last play in `site.yml` hands the collected
+list back to `provision.py`. A new role shows up in the file as soon as it
+declares itself — nothing else to change.
+
+**Where the files land.** Resolved per run, in order:
+
+1. `$FORGELAB_REGISTRY_DIR`
+2. `~/.forgelab/registry_dir` — one line, written by `make agent-run`
+3. `<this checkout>/cluster_registered` — what a hand-run `make provision` uses
+
+The indirection exists because Bamboo gives every plan its own working copy
+under `~/.forgelab/bamboo-agent-home/xml-data/build-dir/FORGE-<PLAN>-JOB1`.
+Left repo-relative, PROV would write into a throwaway directory and DEPROV —
+a *different* throwaway directory — could never clean it up. The pointer file
+is read on every run, so a long-lived agent picks up a change without a
+restart.
 
 ### DC/OS: installer cache and the Apple Silicon blocker
 
@@ -287,6 +344,8 @@ make deprovision CLUSTER=lab1
 2. Backend sweep: `multipass list | grep '<name>-'` → `multipass delete --purge`
    any stragglers the backend's Terraform provider left behind.
 3. Removes the generated inventory file and the Terraform workspace.
+4. Removes `~/.forgelab/ssh_config.d/<name>.conf` and the cluster's
+   `cluster_registered/<name>_cluster_info.yml`.
 
 Deprovision is **idempotent** — safe to run twice, and it's also the
 recovery path after a partial/failed provision (see Troubleshooting).
@@ -334,7 +393,7 @@ installation**.
 - **After expiry:** run `make relicense` — fetches + copies the current key
   **and** opens Bamboo's license admin page so you can paste and save.
 
-Both commands wrap `infra/scripts/get-license.sh`, which scrapes the Bamboo
+Both commands wrap `infra/scripts/get_license.py`, which scrapes the Bamboo
 Data Center 24h key from the Atlassian developer page (needs `curl` +
 `python3`, both stock on macOS). Override `LICENSE_LABEL` to pull a
 different published key.
@@ -402,7 +461,7 @@ Multipass gave the whole batch the *same MAC address*, so DHCP issued them a
 single lease (`ps -Ao command | grep -o 'mac=[0-9a-f:]*'` shows the duplicate).
 This is a multipassd race on concurrent launches, which is why
 `tf_apply_retry` runs `terraform apply -parallelism=1` — never remove that
-flag. `provision.sh` now fails fast on duplicate IPs instead of handing the
+flag. `provision.py` now fails fast on duplicate IPs instead of handing the
 broken inventory to Ansible. Recovery: `make deprovision CLUSTER=<name>` and
 re-run.
 
@@ -458,23 +517,26 @@ forge-lab/
 ├── CLAUDE.md                       # repo conventions, commands, layout map
 ├── Makefile                        # up / down / provision / deprovision / relicense / lint
 ├── bamboo-specs/                   # Java + Maven (Bamboo Specs plans-as-code)
-│   └── src/main/java/lab/          # PLAN ROOT — one directory per plan
-│       ├── README.md               # the contract every new plan follows
-│       ├── shared/                 # used by 2+ plans
-│       │   ├── SpecConstants.java  # BAMBOO_URL, REPO_NAME
-│       │   ├── scripts/lib.sh      # bash helpers sourced by every plan script
-│       │   ├── terraform/          # main.tf/variables/outputs, modules/multipass/
-│       │   ├── ansible/            # site.yml, roles, generated inventory (gitignored)
-│       │   └── clusters/           # per-cluster tfvars (+ defaults.tfvars)
-│       ├── provisioncluster/       # FORGE-PROV
-│       │   ├── ProvisionClusterSpec.java
-│       │   └── scripts/            # provision.sh, verify.sh
-│       ├── deprovisioncluster/     # FORGE-DEPROV
-│       │   ├── DeprovisionClusterSpec.java
-│       │   └── scripts/            # deprovision.sh
-│       └── agentimage/             # AGENT-BUILD
-│           ├── BuildAgentImageSpec.java
-│           └── README.md           # build script lives in the bamboo-agent repo
+│   ├── src/main/java/lab/          # PLAN ROOT — one directory per plan
+│   │   ├── README.md               # the contract every new plan follows
+│   │   ├── shared/                 # used by 2+ plans
+│   │   │   ├── SpecConstants.java  # BAMBOO_URL, REPO_NAME
+│   │   │   ├── python/forgelab/    # the lab's one library (stdlib only)
+│   │   │   ├── terraform/          # main.tf/variables/outputs, modules/multipass/
+│   │   │   ├── ansible/            # site.yml, roles, generated inventory (gitignored)
+│   │   │   └── clusters/           # per-cluster tfvars (+ defaults.tfvars)
+│   │   ├── provisioncluster/       # FORGE-PROV
+│   │   │   ├── ProvisionClusterSpec.java
+│   │   │   └── scripts/            # provision.py, verify.py
+│   │   ├── deprovisioncluster/     # FORGE-DEPROV
+│   │   │   ├── DeprovisionClusterSpec.java
+│   │   │   └── scripts/            # deprovision.py
+│   │   └── agentimage/             # AGENT-BUILD
+│   │       ├── BuildAgentImageSpec.java
+│   │       └── README.md           # build script lives in the bamboo-agent repo
+│   └── src/test/                   # java/ spec validation, python/ script tests
+├── cluster_registered/             # GENERATED: one YAML per live cluster
+│   └── <name>_cluster_info.yml     # written by PROV, deleted by DEPROV
 ├── infra/                          # lab operations, NOT run by any plan
 │   ├── helm/                       # Bamboo + Postgres chart values
 │   ├── agent/                      # host-local agent install/run scripts
@@ -482,9 +544,13 @@ forge-lab/
 └── docs/                           # PRD, tech spec, design docs
 ```
 
-Shell and Terraform living inside a Maven source root is deliberate: one
+Python and Terraform living inside a Maven source root is deliberate: one
 lookup gets you everything a plan runs. Maven compiles `.java` and ignores the
 rest, so it has no effect on the build.
+
+`cluster_registered/` is the one directory here whose contents the pipeline
+writes: generated, tracked, and never committed by CI. See
+[Cluster info files](#cluster-info-files-cluster_registered).
 
 **Adding a plan?** Follow the contract in
 [`bamboo-specs/src/main/java/lab/README.md`](bamboo-specs/src/main/java/lab/README.md):

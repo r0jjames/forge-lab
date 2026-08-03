@@ -159,5 +159,9 @@ def write(cluster: str, cluster_type: str, provisioned_at: str, nodes, component
     return info
 
 
-def remove(cluster: str):
-    path(cluster).unlink(missing_ok=True)
+def remove(cluster: str) -> bool:
+    """Drop the cluster's file. Returns whether there was one to drop."""
+    info = path(cluster)
+    existed = info.is_file()
+    info.unlink(missing_ok=True)
+    return existed

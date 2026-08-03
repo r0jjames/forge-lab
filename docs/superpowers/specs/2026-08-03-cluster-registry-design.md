@@ -189,7 +189,9 @@ lists clusters that came up healthy.
   registry file is only ever overwritten by a run that first tore the old
   cluster down.
 - `remove` tolerates an already-missing file, matching the existing inventory
-  and ssh-config cleanup.
+  and ssh-config cleanup. It returns whether a file was there, and deprovision
+  names the path either way — a silent no-op is exactly what a registry
+  resolved to the wrong directory looks like.
 - A file left behind by VMs deleted outside the pipeline is accepted: the
   registry reflects provisions, and `make deprovision` is the way to retire one.
 

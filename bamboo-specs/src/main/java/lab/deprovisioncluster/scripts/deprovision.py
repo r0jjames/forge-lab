@@ -40,7 +40,13 @@ def main(argv):
     # 3. Remove generated inventory + ssh config + registry entry
     (paths.INV_DIR / f"{cluster}.ini").unlink(missing_ok=True)
     sshconf.remove(cluster)
-    registry.remove(cluster)
+    # Say which registry this cleared: PROV and DEPROV run from separate Bamboo
+    # checkouts, so a silent no-op here used to mean the file lived elsewhere.
+    info = registry.path(cluster)
+    if registry.remove(cluster):
+        print(f"==> removed cluster info: {info}")
+    else:
+        print(f"==> no cluster info to remove at {info}")
     print(f"==> cluster '{cluster}' fully deprovisioned")
 
 

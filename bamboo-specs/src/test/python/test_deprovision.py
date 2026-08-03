@@ -110,12 +110,20 @@ def test_removes_the_generated_inventory_and_ssh_config(lab):
     assert not (lab.ssh_dir / "lab1.conf").exists()
 
 
-def test_removes_the_cluster_info_file(lab):
+def test_removes_the_cluster_info_file(lab, capsys):
     (lab.registry_dir / "lab1_cluster_info.yml").write_text("cluster: lab1\n")
     (lab.registry_dir / "lab2_cluster_info.yml").write_text("cluster: lab2\n")
     deprovision.main(["lab1"])
     assert not (lab.registry_dir / "lab1_cluster_info.yml").exists()
     assert (lab.registry_dir / "lab2_cluster_info.yml").exists()
+    assert "removed cluster info" in capsys.readouterr().out
+
+
+def test_names_the_registry_it_found_nothing_in(lab, capsys):
+    """The registry is elsewhere in CI; a silent no-op hides that."""
+    deprovision.main(["lab1"])
+    out = capsys.readouterr().out
+    assert f"no cluster info to remove at {lab.registry_dir}" in out
 
 
 def test_tolerates_already_missing_generated_files(lab):
