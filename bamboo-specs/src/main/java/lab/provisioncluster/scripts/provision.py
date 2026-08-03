@@ -60,8 +60,12 @@ def main(argv):
     inv.write_text(
         inventory.render(
             cluster,
-            multipass.list_vms(f"{cluster}-mgmt-"),
-            multipass.list_vms(f"{cluster}-compute-"),
+            {
+                "mgmt": multipass.list_vms(f"{cluster}-mgmt-"),
+                "compute": multipass.list_vms(f"{cluster}-compute-"),
+                "data": multipass.list_vms(f"{cluster}-data-"),
+                "splunk": multipass.list_vms(f"{cluster}-splunk-"),
+            },
         )
     )
     inventory.assert_unique_ips(inv)

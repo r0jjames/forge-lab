@@ -14,15 +14,24 @@ from .proc import die
 
 _HOST_RE = re.compile(r"^(\S+)\s+ansible_host=(\S+)")
 
+# The groups the k8s and dcos roles target. Everything else in the inventory is
+# a VM that must never receive kubelet.
+K8S_GROUPS = ("mgmt", "compute")
 
-def render(cluster: str, mgmt, compute) -> str:
-    """Build the .ini for a cluster from its mgmt and compute nodes."""
-    lines = ["[mgmt]"]
-    lines += [f"{n.name} ansible_host={multipass.lan_ip(n)}" for n in mgmt]
-    lines += ["", "[compute]"]
-    lines += [f"{n.name} ansible_host={multipass.lan_ip(n)}" for n in compute]
+
+def render(cluster: str, groups) -> str:
+    """Build the .ini for a cluster from an ordered {group: [Node]} mapping.
+
+    Empty groups are still emitted: a `hosts: data` play must resolve to zero
+    hosts rather than fail on a group ansible has never heard of.
+    """
+    lines = []
+    for group, nodes in groups.items():
+        lines.append(f"[{group}]")
+        lines += [f"{n.name} ansible_host={multipass.lan_ip(n)}" for n in nodes]
+        lines.append("")
+    lines += ["[k8s_nodes:children]", *K8S_GROUPS, ""]
     lines += [
-        "",
         "[all:vars]",
         "ansible_user=ubuntu",
         "ansible_ssh_private_key_file=~/.forgelab/id_ed25519",
@@ -48,16 +57,28 @@ def find_duplicate_ips(text: str) -> list:
     return sorted({ip for ip in ips if ips.count(ip) > 1})
 
 
-def mgmt_ip(text: str) -> str:
-    """The first mgmt-group host address, or "" when the group is empty."""
-    in_mgmt = False
+def group_ips(text: str, group: str) -> list:
+    """Every host address in `group`, in file order. [] when empty or absent."""
+    ips = []
+    in_group = False
     for line in text.splitlines():
         if line.startswith("["):
-            in_mgmt = line.startswith("[mgmt]")
+            in_group = line.strip() == f"[{group}]"
             continue
-        if in_mgmt and "ansible_host=" in line:
-            return line.split("ansible_host=", 1)[1].split()[0]
-    return ""
+        if in_group and "ansible_host=" in line:
+            ips.append(line.split("ansible_host=", 1)[1].split()[0])
+    return ips
+
+
+def first_ip(text: str, group: str) -> str:
+    """The first host address in `group`, or "" when the group is empty."""
+    ips = group_ips(text, group)
+    return ips[0] if ips else ""
+
+
+def mgmt_ip(text: str) -> str:
+    """The first mgmt-group host address, or "" when the group is empty."""
+    return first_ip(text, "mgmt")
 
 
 def assert_unique_ips(path):
