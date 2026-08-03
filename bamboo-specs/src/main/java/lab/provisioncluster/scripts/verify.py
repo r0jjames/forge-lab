@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """Poll a freshly provisioned cluster until it reports healthy."""
 
+import json
 import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
-from forgelab import inventory, paths, proc  # noqa: E402
+from forgelab import credentials, inventory, paths, proc  # noqa: E402
 
 ATTEMPTS = 30
 INTERVAL_SECONDS = 10
@@ -18,6 +20,12 @@ SSH_OPTS = (
     "-o", "StrictHostKeyChecking=no",
     "-o", "UserKnownHostsFile=/dev/null",
 )
+
+# Task 9's role must seed exactly these — verify and the role are one contract.
+KEYCLOAK_PORT = 30080
+KEYCLOAK_REALM = "forgelab"
+KEYCLOAK_CLIENT = "app"
+KEYCLOAK_USER = "labuser"
 
 
 def nodes_ready(kubectl_output: str) -> bool:
@@ -73,6 +81,54 @@ def _verify_k8s(mgmt_ip: str):
     print("default StorageClass and k9s present")
 
 
+def field_from(payload: str, key: str) -> str:
+    """A string field out of a JSON object, or "" for anything else."""
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    value = data.get(key, "")
+    return value if isinstance(value, str) else ""
+
+
+def _http(url: str, form=None) -> str:
+    """GET, or POST a form. Returns the body, or "" on any failure."""
+    data = urllib.parse.urlencode(form).encode() if form else None
+    try:
+        with urllib.request.urlopen(url, data=data, timeout=INTERVAL_SECONDS) as resp:
+            return resp.read().decode()
+    except (urllib.error.URLError, OSError):
+        return ""
+
+
+def _verify_keycloak(mgmt_ip: str, password: str):
+    base = f"http://{mgmt_ip}:{KEYCLOAK_PORT}/realms/{KEYCLOAK_REALM}"
+    print(f"==> verify: keycloak realm at {base}")
+    for _ in range(ATTEMPTS):
+        if field_from(_http(f"{base}/.well-known/openid-configuration"), "issuer"):
+            break
+        time.sleep(INTERVAL_SECONDS)
+    else:
+        proc.die(f"keycloak realm '{KEYCLOAK_REALM}' never published a discovery document")
+
+    if not password:
+        proc.die("no keycloak_app_user_password in the cluster's credentials file")
+    body = _http(
+        f"{base}/protocol/openid-connect/token",
+        {
+            "grant_type": "password",
+            "client_id": KEYCLOAK_CLIENT,
+            "username": KEYCLOAK_USER,
+            "password": password,
+        },
+    )
+    if not field_from(body, "access_token"):
+        proc.die(f"keycloak issued no access_token for '{KEYCLOAK_USER}'")
+    print(f"keycloak issued a token for {KEYCLOAK_USER}@{KEYCLOAK_REALM}")
+
+
 def _verify_dcos(mgmt_ip: str):
     url = f"http://{mgmt_ip}/"
     print(f"==> verify: DC/OS UI health on {url}")
@@ -89,13 +145,15 @@ def _verify_dcos(mgmt_ip: str):
 
 def main(argv):
     if len(argv) < 2:
-        proc.die("usage: verify.py <cluster_name> <cluster_type>")
+        proc.die("usage: verify.py <cluster_name> <cluster_type> [addons]")
     cluster, cluster_type = argv[0], argv[1]
+    addons = [a for a in (argv[2] if len(argv) > 2 else "").split(",") if a]
 
     inv = paths.INV_DIR / f"{cluster}.ini"
     if not inv.is_file():
         proc.die(f"no inventory for {cluster}")
-    mgmt_ip = inventory.mgmt_ip(inv.read_text())
+    text = inv.read_text()
+    mgmt_ip = inventory.mgmt_ip(text)
     if not mgmt_ip:
         proc.die("no mgmt host in inventory")
 
@@ -105,6 +163,10 @@ def main(argv):
         _verify_dcos(mgmt_ip)
     else:
         proc.die(f"unknown cluster_type: {cluster_type}")
+
+    secrets_values = credentials.read(cluster)
+    if "keycloak" in addons:
+        _verify_keycloak(mgmt_ip, secrets_values.get("keycloak_app_user_password", ""))
 
 
 if __name__ == "__main__":

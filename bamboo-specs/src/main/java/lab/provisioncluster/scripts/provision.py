@@ -106,6 +106,7 @@ def main(argv):
         Path(__file__).resolve().parent / "verify.py",
         cluster,
         cluster_type,
+        ",".join(addons),
     )
 
     # Stage 5: Register. Last, so the registry only lists healthy clusters.

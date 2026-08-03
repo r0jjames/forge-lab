@@ -50,3 +50,28 @@ def test_default_storage_class_is_empty_when_there_are_no_classes():
 def test_default_storage_class_ignores_a_provisioner_named_default():
     text = "fast   example.io/default   Delete   Immediate   false   3m\n"
     assert verify.default_storage_class(text) == ""
+
+
+def test_field_from_reads_the_access_token():
+    assert verify.field_from('{"access_token": "abc.def"}', "access_token") == "abc.def"
+
+
+def test_field_from_reads_the_issuer():
+    payload = '{"issuer": "http://1.2.3.4:30080/realms/forgelab"}'
+    assert verify.field_from(payload, "issuer").endswith("/realms/forgelab")
+
+
+def test_field_from_is_empty_when_the_key_is_missing():
+    assert verify.field_from('{"error": "invalid_grant"}', "access_token") == ""
+
+
+def test_field_from_is_empty_on_malformed_json():
+    assert verify.field_from("<html>404</html>", "access_token") == ""
+
+
+def test_field_from_is_empty_on_a_json_array():
+    assert verify.field_from("[1, 2]", "access_token") == ""
+
+
+def test_field_from_is_empty_on_a_non_string_value():
+    assert verify.field_from('{"access_token": 5}', "access_token") == ""
