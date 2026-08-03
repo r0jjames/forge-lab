@@ -19,10 +19,11 @@ clicked together by hand.
   (fetched via `make license`, re-applied each session via `make relicense`).
 - **Pipelines as code:** Bamboo Specs (Java + Maven) define the plans;
   `mvn test` validates them offline before publish.
-- **CI-agnostic core:** all real provisioning logic lives in
-  `plans/*/scripts/*.sh`. Bamboo Specs tasks, the Makefile, and (if
-  Bamboo's DC line is ever pulled) a future Jenkinsfile all call the *same*
-  scripts. This isolates the Bamboo licensing risk from the actual lab work.
+- **CI-agnostic core:** all real provisioning logic lives in shell scripts
+  that sit beside the plan spec that runs them (`lab/<planid>/scripts/`).
+  Bamboo Specs tasks, the Makefile, and (if Bamboo's DC line is ever pulled)
+  a future Jenkinsfile all call the *same* scripts. This isolates the Bamboo
+  licensing risk from the actual lab work.
 - **Provisioned target:** Multipass VMs, wired up with Terraform (VM
   creation) + Ansible (OS-level install: kubeadm/containerd for k8s, or the
   DC/OS installer).
@@ -42,17 +43,17 @@ Mac host (32Gi+)
 │   └── has: JDK 17, terraform, ansible, multipass CLI (direct)
 └── Multipass VMs              (created by pipelines only)
     ├── <name>-mgmt-1..N
-    └── <name>-compute-1..N    (counts/sizes from plans/shared/clusters/<name>.tfvars)
+    └── <name>-compute-1..N    (counts/sizes from lab/shared/clusters/<name>.tfvars)
 ```
 
-**CI-agnostic core:** all real logic lives in `plans/*/scripts/*.sh`
+**CI-agnostic core:** all real logic lives in the plans' shell scripts
 (calling Terraform + Ansible) and runs from a plain shell. Bamboo Specs tasks
 are one-liners calling those scripts; the Makefile calls the same scripts; a
 future Jenkinsfile would too. This isolates the Bamboo licensing risk.
 
 **Swappable VM backend:** the root Terraform module exposes a stable
 contract (cluster_name + node specs in → node IPs + rendered inventory out)
-and delegates to `plans/shared/terraform/modules/multipass/`. Swapping to
+and delegates to `lab/shared/terraform/modules/multipass/`. Swapping to
 UTM or libvirt later means writing a sibling module and flipping a `backend`
 variable. Ansible only ever sees the generated inventory, never the backend.
 Deprovision's backend sweep step is backend-scoped too.
@@ -64,7 +65,7 @@ Deprovision's backend sweep step is backend-scoped too.
 | D1 | CI engine | **Bamboo DC + 24h timebomb license** | Atlassian stopped new DC trial licenses 2026-03-30, but free 10-user 24h timebomb keys remain published on the Atlassian developer site for testing. Re-apply key per session; `bamboo-home` PVC persists everything else. Jenkins remains a paper fallback via the CI-agnostic core. |
 | D2 | Host K8s | **Rancher Desktop** | Already installed, lighter than UTM kubeadm, easy localhost access. |
 | D3 | Agent placement (Phase 1) | **Plain process on Mac host** | Direct access to `multipass`/`terraform`; zero SSH plumbing. Pod agent + SSH-to-host deferred to Phase 2+. |
-| D4 | Per-cluster config | **tfvars file per cluster** (`plans/shared/clusters/<name>.tfvars`) | Node counts, cpu/mem/disk, cluster_type versioned in repo; `defaults.tfvars` fallback; Terraform-native, no glue parser. |
+| D4 | Per-cluster config | **tfvars file per cluster** (`lab/shared/clusters/<name>.tfvars`) | Node counts, cpu/mem/disk, cluster_type versioned in repo; `defaults.tfvars` fallback; Terraform-native, no glue parser. |
 | D5 | TF state | Local backend + workspace per cluster | No cloud dependency; no state collisions. |
 | D6 | K8s install method | kubeadm + containerd | Matches real-world and prior UTM learning. |
 | D7 | VM backend | **Multipass, but swappable** | Backend isolated in a Terraform module; UTM/libvirt later = new module + one variable flip. Ansible only ever sees the generated inventory. |
@@ -214,23 +215,23 @@ cluster (Phase 2+) is covered next.
 ### Provisioning a cluster
 
 ```bash
-make provision CLUSTER=lab1              # uses plans/shared/clusters/lab1.tfvars if present
+make provision CLUSTER=lab1              # uses lab/shared/clusters/lab1.tfvars if present
 make provision CLUSTER=lab1 TYPE=dcos    # override cluster_type from the tfvars file
 ```
 
 What happens, stage by stage (whether triggered via `make` or via the
 Bamboo `ProvisionClusterPlan`, since both call the same
-`plans/*/scripts/*.sh`):
+`lab/<planid>/scripts/*.sh`):
 
 1. **Validate** — checks `cluster_name` matches `[a-z0-9-]+`; refuses if
    `multipass list` already shows `<name>-` prefixed VMs; resolves config
-   from `plans/shared/clusters/<name>.tfvars` if it exists, else
-   `plans/shared/clusters/defaults.tfvars`.
+   from `lab/shared/clusters/<name>.tfvars` if it exists, else
+   `lab/shared/clusters/defaults.tfvars`.
    An explicit `TYPE=` overrides whatever `cluster_type` the tfvars file sets.
 2. **Provision** — `terraform workspace select/new <name>`, then
    `apply -var-file=<resolved> -var cluster_name=<name>` (serially — see the
    Multipass MAC note under Troubleshooting); renders
-   `plans/shared/ansible/inventory/<name>.ini` from the Terraform output,
+   `lab/shared/ansible/inventory/<name>.ini` from the Terraform output,
    refusing to continue if two nodes came back with the same IP. Also writes
    `~/.forgelab/ssh_config.d/<name>.conf` so `ssh <name>-mgmt-1` and
    `ssh <node-ip>` log in as `ubuntu` with `~/.forgelab/id_ed25519` — no flags
@@ -292,9 +293,9 @@ recovery path after a partial/failed provision (see Troubleshooting).
 
 ### Why tfvars-per-cluster
 
-Each named cluster gets its own `plans/shared/clusters/<name>.tfvars` (node counts,
+Each named cluster gets its own `lab/shared/clusters/<name>.tfvars` (node counts,
 cpu/mem/disk per node, `cluster_type`), versioned in the repo. If a cluster
-has no dedicated tfvars file, `plans/shared/clusters/defaults.tfvars` is used
+has no dedicated tfvars file, `lab/shared/clusters/defaults.tfvars` is used
 instead.
 This keeps sizing decisions in git history, avoids inventing a custom
 config-parsing layer (Terraform reads `.tfvars` natively), and lets you keep
@@ -346,14 +347,14 @@ dries up sooner.
 ## VM backend swap boundary
 
 Multipass is the only VM backend implemented, but the boundary is
-deliberate: the root Terraform module (`plans/shared/terraform/`) exposes a
+deliberate: the root Terraform module (`lab/shared/terraform/`) exposes a
 fixed contract — cluster name + per-node specs in, node IPs + a rendered
 Ansible inventory out — and delegates the actual VM lifecycle to
-`plans/shared/terraform/modules/multipass/`.
+`lab/shared/terraform/modules/multipass/`.
 
 To add a different backend (UTM, libvirt, etc.) later:
 
-1. Write a sibling module, e.g. `plans/shared/terraform/modules/utm/`,
+1. Write a sibling module, e.g. `lab/shared/terraform/modules/utm/`,
    implementing the same input/output contract.
 2. Flip the `backend` variable to select it.
 3. Nothing above the module boundary changes: Ansible only ever consumes the
@@ -446,28 +447,34 @@ run on amd64 hardware.
 
 ## Repository layout
 
-The repo is organized **per plan**: one directory under `plans/` per Bamboo
-plan, holding every piece of code that plan executes.
+The repo is organized **per plan**. The plan root is
+`bamboo-specs/src/main/java/lab/` — referred to as `lab/` throughout this
+README and as `$(LAB)` in the Makefile. Each directory under it is one Bamboo
+plan, holding its spec *and* every piece of code that plan executes.
 
 ```
 forge-lab/
 ├── README.md                       # this file
 ├── CLAUDE.md                       # repo conventions, commands, layout map
 ├── Makefile                        # up / down / provision / deprovision / relicense / lint
-├── plans/                          # everything a Bamboo plan executes
-│   ├── README.md                   # the contract every new plan follows
-│   ├── shared/                     # code used by 2+ plans
-│   │   ├── scripts/lib.sh          # bash helpers sourced by every plan script
-│   │   ├── terraform/              # main.tf/variables/outputs, modules/multipass/
-│   │   ├── ansible/                # site.yml, roles, generated inventory (gitignored)
-│   │   └── clusters/               # per-cluster tfvars (+ defaults.tfvars)
-│   ├── provision-cluster/scripts/  # provision.sh, verify.sh (FORGE-PROV)
-│   ├── deprovision-cluster/scripts/# deprovision.sh (FORGE-DEPROV)
-│   └── agent-image/                # AGENT-BUILD; build script lives in bamboo-agent repo
 ├── bamboo-specs/                   # Java + Maven (Bamboo Specs plans-as-code)
-│   └── src/main/java/lab/          # one package per plan, mirroring its plans/ dir
-│       ├── shared/                 # SpecConstants (BAMBOO_URL, REPO_NAME)
-│       ├── provisioncluster/  deprovisioncluster/  agentimage/
+│   └── src/main/java/lab/          # PLAN ROOT — one directory per plan
+│       ├── README.md               # the contract every new plan follows
+│       ├── shared/                 # used by 2+ plans
+│       │   ├── SpecConstants.java  # BAMBOO_URL, REPO_NAME
+│       │   ├── scripts/lib.sh      # bash helpers sourced by every plan script
+│       │   ├── terraform/          # main.tf/variables/outputs, modules/multipass/
+│       │   ├── ansible/            # site.yml, roles, generated inventory (gitignored)
+│       │   └── clusters/           # per-cluster tfvars (+ defaults.tfvars)
+│       ├── provisioncluster/       # FORGE-PROV
+│       │   ├── ProvisionClusterSpec.java
+│       │   └── scripts/            # provision.sh, verify.sh
+│       ├── deprovisioncluster/     # FORGE-DEPROV
+│       │   ├── DeprovisionClusterSpec.java
+│       │   └── scripts/            # deprovision.sh
+│       └── agentimage/             # AGENT-BUILD
+│           ├── BuildAgentImageSpec.java
+│           └── README.md           # build script lives in the bamboo-agent repo
 ├── infra/                          # lab operations, NOT run by any plan
 │   ├── helm/                       # Bamboo + Postgres chart values
 │   ├── agent/                      # host-local agent install/run scripts
@@ -475,9 +482,14 @@ forge-lab/
 └── docs/                           # PRD, tech spec, design docs
 ```
 
+Shell and Terraform living inside a Maven source root is deliberate: one
+lookup gets you everything a plan runs. Maven compiles `.java` and ignores the
+rest, so it has no effect on the build.
+
 **Adding a plan?** Follow the contract in
-[`plans/README.md`](plans/README.md): a directory per plan, its scripts under
-`plans/<plan-id>/scripts/`, its spec in the matching `lab.<planid>` package,
-anything shared in `plans/shared/`, and anything not plan-executed in `infra/`.
+[`bamboo-specs/src/main/java/lab/README.md`](bamboo-specs/src/main/java/lab/README.md):
+a directory per plan, its spec and `scripts/` inside it, anything shared by two
+or more plans in `lab/shared/`, and anything not executed by a plan in
+`infra/`.
 
 See `CLAUDE.md` for the day-to-day command reference and conventions.

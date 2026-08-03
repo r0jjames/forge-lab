@@ -1,4 +1,6 @@
 SHELL := /bin/bash
+# Plan root: one directory per Bamboo plan, holding its spec + the code it runs.
+LAB := bamboo-specs/src/main/java/lab
 CLUSTER ?=
 TYPE ?=
 SPEC_CLASSES := lab.provisioncluster.ProvisionClusterSpec \
@@ -122,18 +124,18 @@ specs-publish: ## Publish all Bamboo Specs plans to the server
 .PHONY: provision
 provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	plans/provision-cluster/scripts/provision.sh $(CLUSTER) $(TYPE)
+	$(LAB)/provisioncluster/scripts/provision.sh $(CLUSTER) $(TYPE)
 
 .PHONY: deprovision
 deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	plans/deprovision-cluster/scripts/deprovision.sh $(CLUSTER)
+	$(LAB)/deprovisioncluster/scripts/deprovision.sh $(CLUSTER)
 
 .PHONY: lint
 lint: ## All static checks
-	shellcheck infra/scripts/*.sh infra/agent/*.sh plans/*/scripts/*.sh
-	terraform -chdir=plans/shared/terraform fmt -check -recursive
-	terraform -chdir=plans/shared/terraform init -backend=false -input=false >/dev/null
-	terraform -chdir=plans/shared/terraform validate
-	cd plans/shared/ansible && ansible-lint
+	shellcheck infra/scripts/*.sh infra/agent/*.sh $(LAB)/*/scripts/*.sh
+	terraform -chdir=$(LAB)/shared/terraform fmt -check -recursive
+	terraform -chdir=$(LAB)/shared/terraform init -backend=false -input=false >/dev/null
+	terraform -chdir=$(LAB)/shared/terraform validate
+	cd $(LAB)/shared/ansible && ansible-lint
 	mvn -f bamboo-specs/pom.xml -q test

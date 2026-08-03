@@ -1,8 +1,8 @@
-# agent-image (AGENT-BUILD)
+# agentimage (AGENT-BUILD)
 
 Builds and pushes the containerized Bamboo CI agent image with kaniko.
 
-- **Spec:** `bamboo-specs/src/main/java/lab/agentimage/BuildAgentImageSpec.java`
+- **Spec:** `BuildAgentImageSpec.java`, beside this file
 - **Script:** *not in this repo.* The plan checks out
   [bamboo-agent](https://github.com/r0jjames/bamboo-agent) as a plan-local
   repository and runs `bamboo-agent-deployment/scripts/build-image.sh` from

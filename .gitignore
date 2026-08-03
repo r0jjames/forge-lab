@@ -2,10 +2,10 @@
 **/.terraform/
 *.tfstate
 *.tfstate.*
-plans/shared/terraform/.generated/
+bamboo-specs/src/main/java/lab/shared/terraform/.generated/
 
 # Generated inventories
-plans/shared/ansible/inventory/*.ini
+bamboo-specs/src/main/java/lab/shared/ansible/inventory/*.ini
 
 # Java / Maven
 bamboo-specs/target/

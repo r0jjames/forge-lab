@@ -34,27 +34,32 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
 
 ## Layout map
 
-- `plans/<plan-id>/scripts/` — everything a single plan executes; CI-agnostic
-  core, called by both the Bamboo spec and the Makefile
-- `plans/shared/` — code used by 2+ plans: `scripts/lib.sh`, `terraform/`
-  (`modules/multipass/` = swappable VM backend boundary), `ansible/`, and
-  `clusters/<name>.tfvars` (per-cluster sizing; `defaults.tfvars` fallback)
+Plan root is `bamboo-specs/src/main/java/lab/` (`$(LAB)` in the Makefile) —
+one directory per Bamboo plan, holding its spec AND the code it runs:
+
+- `lab/<planid>/` — `<Name>Spec.java` + `scripts/` for that plan alone;
+  the scripts are the CI-agnostic core, called by both the spec and the Makefile
+- `lab/shared/` — used by 2+ plans: `SpecConstants.java`, `scripts/lib.sh`,
+  `terraform/` (`modules/multipass/` = swappable VM backend boundary),
+  `ansible/`, `clusters/<name>.tfvars` (sizing; `defaults.tfvars` fallback)
 - `infra/` — lab operations NOT run by any plan: `helm/` chart values,
   `agent/` host-agent install+run, `scripts/` license fetch
-- `bamboo-specs/` — Java plans-as-code (mvn test validates offline); one
-  package per plan, mirroring the plan directory name
+- Shell and Terraform inside a Maven source root is deliberate — one lookup
+  per plan. Maven compiles `.java` and ignores the rest.
 
 ## Adding a plan
 
-Full contract in `plans/README.md`. In short:
+Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
 
-1. `plans/<plan-id>/` — kebab-case, one directory per plan spec
-2. Its scripts in `plans/<plan-id>/scripts/`; nothing outside that plan uses them
-3. Spec at `bamboo-specs/src/main/java/lab/<planid>/<Name>Spec.java` (`<planid>`
-   = plan-id with dashes stripped) + one offline-validation test beside it
-4. Shared by 2+ plans → `plans/shared/`; never reach into another plan's dir
-5. Not plan-executed → `infra/`, not `plans/`
+1. `lab/<planid>/` — lowercase, no dashes (it is a Java package name)
+2. Spec `lab/<planid>/<Name>Spec.java` + one offline-validation test at
+   `src/test/java/lab/<planid>/<Name>SpecTest.java`
+3. Its scripts in `lab/<planid>/scripts/`; nothing outside that plan uses them
+4. Shared by 2+ plans → `lab/shared/`; never reach into another plan's dir
+5. Not plan-executed → `infra/`, not `lab/`
 6. Register the class in the Makefile's `SPEC_CLASSES`
+7. `ScriptTask` bodies are repo-relative from Bamboo's checkout root:
+   `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.sh`
 
 ## Conventions
 

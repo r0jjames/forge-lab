@@ -2,7 +2,7 @@ package lab.shared;
 
 /**
  * Values every spec in this repo needs. Lives in its own package so no plan has
- * to reach into another plan's class for them (see plans/README.md, rule 4).
+ * to reach into another plan's class for them (see lab/README.md, rule 4).
  */
 public final class SpecConstants {
 

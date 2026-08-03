@@ -43,7 +43,7 @@ public class ProvisionClusterSpec {
                                 new VcsCheckoutTask().description("checkout")
                                         .checkoutItems(new CheckoutItem().defaultRepository()),
                                 new ScriptTask().description("provision cluster")
-                                        .inlineBody("plans/provision-cluster/scripts/provision.sh "
+                                        .inlineBody("bamboo-specs/src/main/java/lab/provisioncluster/scripts/provision.sh "
                                                 + "\"${bamboo.cluster_name}\" \"${bamboo.cluster_type}\""))));
     }
 

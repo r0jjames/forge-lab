@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# shellcheck source=plans/shared/scripts/lib.sh
+# shellcheck source=bamboo-specs/src/main/java/lab/shared/scripts/lib.sh
 source "$(dirname "${BASH_SOURCE[0]}")/../../shared/scripts/lib.sh"
 
 CLUSTER="${1:?usage: verify.sh <cluster_name> <cluster_type>}"
