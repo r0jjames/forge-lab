@@ -10,6 +10,12 @@ from .proc import die
 
 _ASSIGN_RE = re.compile(r'^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$')
 
+CLUSTER_TYPES = ("k8s", "dcos")
+
+# k9s is deliberately absent: it is a kubectl TUI, installed unconditionally by
+# the k8s role, not something a cluster opts into.
+ADDONS = ("keycloak", "hdfs", "splunk")
+
 
 def resolve(cluster: str) -> Path:
     """lab/shared/clusters/<cluster>.tfvars if present, else defaults.tfvars."""
@@ -60,3 +66,19 @@ def parse_addons(text: str) -> list:
     """
     raw = parse(text).get("addons", "")
     return [name for name in (part.strip() for part in raw.split(",")) if name]
+
+
+def resolve_addons(override: str, tfvars_text: str, source: str) -> list:
+    """The cluster's addon list. The plan variable wins over the tfvars file."""
+    if override.strip():
+        names = [n for n in (p.strip() for p in override.split(",")) if n]
+        source = "the ADDONS override"
+    else:
+        names = parse_addons(tfvars_text)
+    unknown = sorted({n for n in names if n not in ADDONS})
+    if unknown:
+        die(
+            f"unknown addon(s) [{' '.join(unknown)}] from {source}; "
+            f"known: {' '.join(ADDONS)}"
+        )
+    return names

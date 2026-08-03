@@ -16,6 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"
 
 from forgelab import credentials, paths, proc  # noqa: E402
 from forgelab import tfvars as tfvars_mod  # noqa: E402
+from forgelab.tfvars import ADDONS, CLUSTER_TYPES, resolve_addons  # noqa: E402,F401
 
 
 def extra_vars(cluster_type: str, addons, report, secret_values: dict) -> dict:
@@ -64,14 +65,23 @@ def main(argv):
     cluster = argv[0] if argv else ""
     if not cluster:
         proc.die("usage: install.py <cluster_name> [cluster_type] [addons]")
-    text = tfvars_mod.resolve(cluster).read_text()
-    cluster_type = (argv[1] if len(argv) > 1 else "") or tfvars_mod.parse_cluster_type(text)
-    override = argv[2] if len(argv) > 2 else ""
-    addons = (
-        [a for a in (p.strip() for p in override.split(",")) if a]
-        if override.strip()
-        else tfvars_mod.parse_addons(text)
-    )
+    tfvars_path = tfvars_mod.resolve(cluster)
+    text = tfvars_path.read_text()
+
+    type_override = argv[1] if len(argv) > 1 else ""
+    if type_override:
+        cluster_type, type_source = type_override, "the TYPE override"
+    else:
+        cluster_type = tfvars_mod.parse_cluster_type(text)
+        type_source = str(tfvars_path)
+    if cluster_type not in CLUSTER_TYPES:
+        proc.die(
+            f"cluster_type must be k8s or dcos "
+            f"(got '{cluster_type}' from {type_source})"
+        )
+
+    addons_override = argv[2] if len(argv) > 2 else ""
+    addons = resolve_addons(addons_override, text, str(tfvars_path))
     run(cluster, cluster_type, addons)
 
 

@@ -92,3 +92,34 @@ def test_the_variables_file_is_owner_only_while_it_exists(lab, monkeypatch):
 def test_run_returns_the_component_report_path(lab):
     report = install.run("lab1", "k8s", [])
     assert report.name == "components.json"
+
+
+def test_run_deletes_the_variables_file_even_when_the_playbook_fails(lab, monkeypatch):
+    """The finally: block must fire on failure too, not just on success —
+    a password must not survive a failed run on disk."""
+    seen = {}
+
+    def fail(*args, **kwargs):
+        seen["varsfile"] = next(str(a)[1:] for a in args if str(a).startswith("@"))
+        raise LabError("ansible-playbook failed")
+
+    monkeypatch.setattr(install.proc, "run", fail)
+    with pytest.raises(LabError):
+        install.run("lab1", "k8s", ["splunk"])
+    assert not Path(seen["varsfile"]).exists()
+
+
+def test_main_rejects_an_unknown_cluster_type(lab, monkeypatch, tmp_path):
+    tfvars_file = tmp_path / "lab1.tfvars"
+    tfvars_file.write_text('cluster_type = "k8s"\n')
+    monkeypatch.setattr(install.tfvars_mod, "resolve", lambda _: tfvars_file)
+    with pytest.raises(LabError, match=r"cluster_type must be k8s or dcos"):
+        install.main(["lab1", "swarm"])
+
+
+def test_main_rejects_an_unknown_addon(lab, monkeypatch, tmp_path):
+    tfvars_file = tmp_path / "lab1.tfvars"
+    tfvars_file.write_text('cluster_type = "k8s"\n')
+    monkeypatch.setattr(install.tfvars_mod, "resolve", lambda _: tfvars_file)
+    with pytest.raises(LabError, match=r"unknown addon\(s\) \[kafka\]"):
+        install.main(["lab1", "k8s", "kafka"])

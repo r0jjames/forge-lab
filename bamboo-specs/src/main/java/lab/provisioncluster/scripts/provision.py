@@ -12,31 +12,11 @@ from forgelab import (  # noqa: E402
     credentials, inventory, multipass, paths, proc, registry, sshconf, terraform,
 )
 from forgelab import tfvars as tfvars_mod  # noqa: E402
+from forgelab.tfvars import ADDONS, CLUSTER_TYPES, resolve_addons  # noqa: E402
 
 import install  # noqa: E402
 
 CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
-CLUSTER_TYPES = ("k8s", "dcos")
-
-# k9s is deliberately absent: it is a kubectl TUI, installed unconditionally by
-# the k8s role, not something a cluster opts into.
-ADDONS = ("keycloak", "hdfs", "splunk")
-
-
-def resolve_addons(override: str, tfvars_text: str, source: str) -> list:
-    """The cluster's addon list. The plan variable wins over the tfvars file."""
-    if override.strip():
-        names = [n for n in (p.strip() for p in override.split(",")) if n]
-        source = "the ADDONS override"
-    else:
-        names = tfvars_mod.parse_addons(tfvars_text)
-    unknown = sorted({n for n in names if n not in ADDONS})
-    if unknown:
-        proc.die(
-            f"unknown addon(s) [{' '.join(unknown)}] from {source}; "
-            f"known: {' '.join(ADDONS)}"
-        )
-    return names
 
 
 # Which addon owns which VM role. Keycloak owns none — it runs on the k8s
