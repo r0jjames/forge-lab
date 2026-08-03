@@ -30,7 +30,8 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
   — provision also writes `~/.forgelab/ssh_config.d/<cluster>.conf` (included
   from `~/.ssh/config`) so `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu`
   with the lab key; deprovision removes it
-- `make lint` — shellcheck + terraform fmt/validate + ansible-lint + mvn test
+- `make lint` — pytest + terraform fmt/validate + ansible-lint + mvn test
+  (pytest is a host tool like shellcheck was: `uv tool install pytest`)
 
 ## Layout map
 
@@ -39,13 +40,17 @@ one directory per Bamboo plan, holding its spec AND the code it runs:
 
 - `lab/<planid>/` — `<Name>Spec.java` + `scripts/` for that plan alone;
   the scripts are the CI-agnostic core, called by both the spec and the Makefile
-- `lab/shared/` — used by 2+ plans: `SpecConstants.java`, `scripts/lib.sh`,
+- `lab/shared/` — used by 2+ plans: `SpecConstants.java`,
+  `python/forgelab/` (the lab's one library, stdlib only),
   `terraform/` (`modules/multipass/` = swappable VM backend boundary),
   `ansible/`, `clusters/<name>.tfvars` (sizing; `defaults.tfvars` fallback)
 - `infra/` — lab operations NOT run by any plan: `helm/` chart values,
   `agent/` host-agent install+run, `scripts/` license fetch
-- Shell and Terraform inside a Maven source root is deliberate — one lookup
+- Python and Terraform inside a Maven source root is deliberate — one lookup
   per plan. Maven compiles `.java` and ignores the rest.
+- `infra/` may import `forgelab` and nothing else under `lab/`; the dependency
+  direction is one-way and no plan reaches into another plan's directory
+- Python tests live in `bamboo-specs/src/test/python/`
 
 ## Adding a plan
 
@@ -59,14 +64,17 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
 5. Not plan-executed → `infra/`, not `lab/`
 6. Register the class in the Makefile's `SPEC_CLASSES`
 7. `ScriptTask` bodies are repo-relative from Bamboo's checkout root:
-   `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.sh`
+   `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.py`
 
 ## Conventions
 
 - Commits: Roj's git identity ONLY — no Claude co-author/footers
-- Scripts: bash strict mode, shellcheck-clean
+- Scripts are Python 3, standard library only (the host agent has no venv).
+  Entrypoint filenames use underscores so tests can import them; wrap
+  `main(argv)` in `proc.main`; parsing/rendering stays pure, shelling out goes
+  through `proc.run`
 - Never commit: license keys, generated inventories, tfstate
 - Multipass units: "4G"/"20G", not Gi
-- Terraform applies run `-parallelism=1` (`tf_apply_retry`): concurrent
+- Terraform applies run `-parallelism=1` (`terraform.apply_retry`): concurrent
   `multipass launch` races give every VM in the batch the same MAC, hence one
   shared DHCP lease. Do not drop the flag

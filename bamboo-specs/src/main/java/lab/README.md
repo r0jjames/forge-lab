@@ -1,31 +1,53 @@
 # lab/ — one directory per Bamboo plan
 
 Each directory here is one plan: its spec (Java) and every piece of code that
-plan executes (shell, Terraform, Ansible), side by side. Nothing about a plan
+plan executes (Python, Terraform, Ansible), side by side. Nothing about a plan
 lives anywhere else.
 
 ```
 lab/
 ├── shared/                     # used by 2+ plans
 │   ├── SpecConstants.java      # BAMBOO_URL, REPO_NAME
-│   ├── scripts/lib.sh          # bash helpers every plan script sources
+│   ├── python/forgelab/        # the lab's one Python library (stdlib only)
 │   ├── terraform/              # VM lifecycle (modules/multipass = backend seam)
 │   ├── ansible/                # site.yml + roles, generated inventory (gitignored)
 │   └── clusters/               # per-cluster tfvars (+ defaults.tfvars)
 ├── provisioncluster/           # FORGE-PROV
 │   ├── ProvisionClusterSpec.java
-│   └── scripts/{provision.sh,verify.sh}
+│   └── scripts/{provision.py,verify.py}
 ├── deprovisioncluster/         # FORGE-DEPROV
 │   ├── DeprovisionClusterSpec.java
-│   └── scripts/deprovision.sh
+│   └── scripts/deprovision.py
 └── agentimage/                 # AGENT-BUILD
     ├── BuildAgentImageSpec.java
     └── README.md               # build script lives in the bamboo-agent repo
 ```
 
-Yes, shell and Terraform live inside a Maven source root. That is deliberate:
+Yes, Python and Terraform live inside a Maven source root. That is deliberate:
 one lookup gets you everything a plan runs. Maven compiles `.java` and ignores
 the rest, so nothing here affects the build.
+
+## The forgelab package
+
+`shared/python/forgelab/` is the only library in the lab, standard library only:
+
+| module         | responsibility                                            |
+| -------------- | --------------------------------------------------------- |
+| `proc.py`      | `LabError`/`die`, `run`, `run_out`, `require_tools`, `main` |
+| `paths.py`     | every path, derived from the package's own location        |
+| `tfvars.py`    | resolve a cluster's tfvars, read `cluster_type` out of it  |
+| `terraform.py` | init / workspace / apply-with-retry / destroy              |
+| `multipass.py` | the VM backend seam — parse `multipass list`, purge VMs    |
+| `inventory.py` | render the ansible inventory, read hosts back out          |
+| `sshconf.py`   | per-cluster `~/.forgelab/ssh_config.d/<cluster>.conf`      |
+
+Parsing and rendering are pure functions taking and returning strings; every
+external command goes through `proc.run`. That split is what makes the tests
+cheap — see `src/test/python/`.
+
+`infra/` may import `forgelab` and nothing else under `lab/`. The dependency
+direction is one-way: `infra/ → lab/shared/`, never the reverse, and never
+plan → plan.
 
 ## Adding a plan
 
@@ -37,8 +59,8 @@ the rest, so nothing here affects the build.
    `make lint` runs.
 3. Put the code it executes in `lab/<planid>/scripts/`. No other plan
    references it.
-4. Reused by 2+ plans? It goes in `lab/shared/`. A plan never reaches into
-   another plan's directory.
+4. Reused by 2+ plans? It goes in `lab/shared/python/forgelab/`. A plan never
+   reaches into another plan's directory.
 5. Not executed by a plan — helm values, license fetch, host-agent install/run
    — it belongs in `infra/`, not here.
 6. Register the spec class in the Makefile's `SPEC_CLASSES` so
@@ -46,14 +68,20 @@ the rest, so nothing here affects the build.
 
 ## Conventions
 
-- Scripts take their inputs as positional arguments and run from any working
-  directory. Source `lib.sh` by relative path
-  (`"$(dirname "${BASH_SOURCE[0]}")/../../shared/scripts/lib.sh"`) and derive
-  every other path from the `SHARED_DIR` it exports — Bamboo runs these from
-  its own build directory, never from the repo root.
-- A spec's `ScriptTask` body stays a one-liner calling a script in this tree.
-  The logic lives in shell so it runs identically from a plain terminal
+- Entrypoints take their inputs as positional arguments and run from any
+  working directory. Put `shared/python` on `sys.path` by relative path
+  (`Path(__file__).resolve().parents[2] / "shared" / "python"`) and derive every
+  other path from `forgelab.paths` — Bamboo runs these from its own build
+  directory, never from the repo root.
+- Entrypoint filenames use underscores, not dashes: the tests import them to
+  stub out their externals.
+- Wrap `main(argv)` in `proc.main` so a `die` or a failed command prints one
+  line instead of a traceback.
+- A spec's `ScriptTask` body stays a one-liner calling an entrypoint in this
+  tree. The logic lives in Python so it runs identically from a plain terminal
   (`make provision`) and from CI — the CI-agnostic core.
 - Script task paths are repo-relative from Bamboo's checkout root, so they read
-  `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.sh`.
-- Scripts use bash strict mode and stay shellcheck-clean (`make lint`).
+  `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.py`.
+- Standard library only. The host agent has no venv; whatever an entrypoint
+  imports must ship with python3.
+- Tests live in `src/test/python/`, run by `make lint`.

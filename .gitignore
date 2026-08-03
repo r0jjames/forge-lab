@@ -11,6 +11,11 @@ bamboo-specs/src/main/java/lab/shared/ansible/inventory/*.ini
 bamboo-specs/target/
 bamboo-specs/.credentials
 
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+
 # Local junk
 .DS_Store
 *.retry

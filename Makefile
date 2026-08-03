@@ -41,7 +41,7 @@ bootstrap: setup bamboo-secrets ## One command: full unattended stack (no setup 
 
 .PHONY: bamboo-secrets
 bamboo-secrets: ## Create/refresh unattended-setup secrets (license, admin, agent token)
-	@key="$$(infra/scripts/get-license.sh)" || exit 1; \
+	@key="$$(infra/scripts/get_license.py)" || exit 1; \
 	  kubectl -n ci create secret generic bamboo-license \
 	    --from-literal=license="$$key" --dry-run=client -o yaml | kubectl apply -f -
 	kubectl -n ci create secret generic bamboo-sysadmin \
@@ -93,7 +93,7 @@ ui: ## Port-forward Bamboo UI (8085) + agent JMS broker (54663)
 
 .PHONY: license
 license: ## Fetch + copy the 24h Bamboo timebomb key (for the setup wizard)
-	@key="$$(infra/scripts/get-license.sh)" || exit 1; \
+	@key="$$(infra/scripts/get_license.py)" || exit 1; \
 	  printf '%s\n\n' "$$key"; \
 	  if command -v pbcopy >/dev/null; then printf '%s' "$$key" | pbcopy; \
 	    echo "(copied to clipboard — paste into the Bamboo setup wizard license field)"; \
@@ -101,15 +101,15 @@ license: ## Fetch + copy the 24h Bamboo timebomb key (for the setup wizard)
 
 .PHONY: relicense
 relicense: ## Fetch + copy the 24h key and open Bamboo license admin (after expiry)
-	infra/scripts/relicense.sh
+	infra/scripts/relicense.py
 
 .PHONY: agent-install
 agent-install: ## Install host-local Bamboo agent (needs AGENT_TOKEN)
-	infra/agent/install-agent.sh
+	infra/agent/install_agent.py
 
 .PHONY: agent-run
 agent-run: ## Run host-local Bamboo agent in console mode
-	infra/agent/run-agent.sh
+	infra/agent/run_agent.py
 
 .PHONY: specs-publish
 specs-publish: ## Publish all Bamboo Specs plans to the server
@@ -124,16 +124,16 @@ specs-publish: ## Publish all Bamboo Specs plans to the server
 .PHONY: provision
 provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	$(LAB)/provisioncluster/scripts/provision.sh $(CLUSTER) $(TYPE)
+	$(LAB)/provisioncluster/scripts/provision.py $(CLUSTER) $(TYPE)
 
 .PHONY: deprovision
 deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	$(LAB)/deprovisioncluster/scripts/deprovision.sh $(CLUSTER)
+	$(LAB)/deprovisioncluster/scripts/deprovision.py $(CLUSTER)
 
 .PHONY: lint
 lint: ## All static checks
-	shellcheck infra/scripts/*.sh infra/agent/*.sh $(LAB)/*/scripts/*.sh
+	pytest bamboo-specs/src/test/python
 	terraform -chdir=$(LAB)/shared/terraform fmt -check -recursive
 	terraform -chdir=$(LAB)/shared/terraform init -backend=false -input=false >/dev/null
 	terraform -chdir=$(LAB)/shared/terraform validate

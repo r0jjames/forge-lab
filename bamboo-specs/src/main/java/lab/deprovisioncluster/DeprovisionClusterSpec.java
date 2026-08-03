@@ -40,7 +40,7 @@ public class DeprovisionClusterSpec {
                                 new VcsCheckoutTask().description("checkout")
                                         .checkoutItems(new CheckoutItem().defaultRepository()),
                                 new ScriptTask().description("deprovision cluster")
-                                        .inlineBody("bamboo-specs/src/main/java/lab/deprovisioncluster/scripts/deprovision.sh "
+                                        .inlineBody("bamboo-specs/src/main/java/lab/deprovisioncluster/scripts/deprovision.py "
                                                 + "\"${bamboo.cluster_name}\""))));
     }
 

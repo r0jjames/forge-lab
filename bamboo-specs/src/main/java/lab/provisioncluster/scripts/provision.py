@@ -1,0 +1,87 @@
+#!/usr/bin/env python3
+"""Provision a lab cluster: validate, terraform apply, install, verify."""
+
+import os
+import re
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
+
+from forgelab import inventory, multipass, paths, proc, sshconf, terraform  # noqa: E402
+from forgelab import tfvars as tfvars_mod  # noqa: E402
+
+CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
+CLUSTER_TYPES = ("k8s", "dcos")
+
+
+def main(argv):
+    cluster = argv[0] if argv else ""
+    if not cluster:
+        proc.die("usage: provision.py <cluster_name> [cluster_type]")
+    type_override = argv[1] if len(argv) > 1 else ""
+
+    # Stage 1: Validate
+    proc.require_tools("terraform", "multipass", "ansible-playbook", "ssh")
+    if not CLUSTER_NAME_RE.fullmatch(cluster):
+        proc.die("cluster_name must match ^[a-z0-9-]+$")
+    if multipass.list_vms(f"{cluster}-"):
+        proc.die(f"VMs with prefix '{cluster}-' already exist; deprovision first")
+
+    tfvars = tfvars_mod.resolve(cluster)
+    if type_override:
+        cluster_type, type_source = type_override, "the TYPE override"
+    else:
+        cluster_type = tfvars_mod.parse_cluster_type(tfvars.read_text())
+        type_source = str(tfvars)
+    if cluster_type not in CLUSTER_TYPES:
+        proc.die(
+            f"cluster_type must be k8s or dcos "
+            f"(got '{cluster_type}' from {type_source})"
+        )
+    print(
+        f"==> provisioning '{cluster}' type={cluster_type} config={tfvars.name}"
+    )
+
+    # Stage 2: Provision (workspace per cluster, tfvars-driven)
+    terraform.init()
+    terraform.workspace_select_or_new(cluster)
+    terraform.apply_retry(
+        f"-var-file={tfvars}", "-var", f"cluster_name={cluster}", "-input=false"
+    )
+
+    # Render inventory from live multipass state (provider does not expose IPs)
+    paths.INV_DIR.mkdir(parents=True, exist_ok=True)
+    inv = paths.INV_DIR / f"{cluster}.ini"
+    inv.write_text(
+        inventory.render(
+            cluster,
+            multipass.list_vms(f"{cluster}-mgmt-"),
+            multipass.list_vms(f"{cluster}-compute-"),
+        )
+    )
+    inventory.assert_unique_ips(inv)
+    print(f"==> inventory: {inv}")
+    sshconf.write(cluster, inventory.parse_hosts(inv.read_text()))
+
+    # Stage 3: Install
+    proc.run(
+        "ansible-playbook",
+        paths.SITE_YML,
+        "-i", inv,
+        "-e", f"cluster_type={cluster_type}",
+        env=paths.ansible_env(os.environ),
+    )
+
+    # Stage 4: Verify
+    proc.run(
+        sys.executable,
+        Path(__file__).resolve().parent / "verify.py",
+        cluster,
+        cluster_type,
+    )
+    print(f"==> cluster '{cluster}' provisioned and verified")
+
+
+if __name__ == "__main__":
+    proc.main(main)
