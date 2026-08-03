@@ -149,6 +149,26 @@ login, but it's right there in the pod), then runs it against
 Leave `make agent-run` running in its own terminal (or under `launchd` —
 see `infra/agent/run-agent.sh`); it needs to stay up for plans to build.
 
+`run-agent.sh` also seeds the capability `agent.role=host` into
+`<agent-home>/bin/bamboo-capabilities.properties`. The Provision/Deprovision
+plans declare a matching **requirement**, which is what keeps the multipass
+toolchain jobs off the containerized k8s agent (`agent.role=ci`, no terraform
+or multipass in that image). Bamboo only reads that properties file on an
+agent's *first* startup, so for an agent that is already registered add the
+capability once against the running server:
+
+```bash
+TOKEN=$(grep -m1 '^token=' bamboo-specs/.credentials | cut -d= -f2-)
+AGENT_ID=$(curl -s -H "Authorization: Bearer $TOKEN" \
+  http://localhost:8085/rest/api/latest/agent | jq -r '.[0].id')
+curl -s -X POST -H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' \
+  -d '{"key":"agent.role","value":"host"}' \
+  "http://localhost:8085/rest/api/latest/agent/$AGENT_ID/capability"   # 204 = added
+```
+
+(Or by hand: Administration → Agents → *your host agent* → Capabilities → Add
+capability, type **Custom**, key `agent.role`, value `host`.)
+
 With security token verification enabled, a freshly started agent registers
 but stays **pending until you approve it**: Administration → Agents →
 Agent authentication → approve the new UUID (the agent log prints the exact

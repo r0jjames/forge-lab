@@ -30,24 +30,24 @@ public class BuildAgentImageSpec {
         return new Plan(
                 new Project().key(new BambooKey("AGENT")).name("bamboo-agent"),
                 "Build Agent Image", new BambooKey("BUILD"))
-            .description("Build + push the containerized Bamboo CI agent via kaniko")
-            .pluginConfigurations(new ConcurrentBuilds().useSystemWideDefault(false))
-            // Plan-local repo: no pre-created linked repository needed. Public
-            // repo over https, so no credentials.
-            .planRepositories(
-                new GitRepository()
-                    .name("bamboo-agent")
-                    .url("https://github.com/r0jjames/bamboo-agent.git")
-                    .branch("main"))
-            .stages(
-                new Stage("Build+Push").jobs(
-                    new Job("BuildPush", new BambooKey("BP"))
-                        .requirements(new Requirement("agent.role").matchValue("ci").matchType(Requirement.MatchType.EQUALS))
-                        .tasks(
-                            new VcsCheckoutTask().description("checkout")
-                                .checkoutItems(new CheckoutItem().defaultRepository()),
-                            new ScriptTask().description("kaniko build + push")
-                                .inlineBody("bamboo-agent-deployment/scripts/build-image.sh"))));
+                .description("Build + push the containerized Bamboo CI agent via kaniko")
+                .pluginConfigurations(new ConcurrentBuilds().useSystemWideDefault(false))
+                // Plan-local repo: no pre-created linked repository needed. Public
+                // repo over https, so no credentials.
+                .planRepositories(
+                        new GitRepository()
+                                .name("bamboo-agent")
+                                .url("https://github.com/r0jjames/bamboo-agent.git")
+                                .branch("main"))
+                .stages(
+                        new Stage("Build+Push").jobs(
+                                new Job("BuildPush", new BambooKey("BP"))
+                                        .requirements(new Requirement("agent.role").matchValue("ci").matchType(Requirement.MatchType.EQUALS))
+                                        .tasks(
+                                                new VcsCheckoutTask().description("checkout")
+                                                        .checkoutItems(new CheckoutItem().defaultRepository()),
+                                                new ScriptTask().description("kaniko build + push")
+                                                        .inlineBody("bamboo-agent-deployment/scripts/build-image.sh"))));
     }
 
     public static void main(String[] args) {

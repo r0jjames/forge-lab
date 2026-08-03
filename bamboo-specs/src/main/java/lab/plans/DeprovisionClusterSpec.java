@@ -7,6 +7,7 @@ import com.atlassian.bamboo.specs.api.builders.plan.Plan;
 import com.atlassian.bamboo.specs.api.builders.plan.Stage;
 import com.atlassian.bamboo.specs.api.builders.plan.configuration.ConcurrentBuilds;
 import com.atlassian.bamboo.specs.api.builders.project.Project;
+import com.atlassian.bamboo.specs.api.builders.requirement.Requirement;
 import com.atlassian.bamboo.specs.api.builders.repository.VcsRepositoryIdentifier;
 import com.atlassian.bamboo.specs.api.builders.plan.branches.PlanBranchManagement;
 import com.atlassian.bamboo.specs.api.builders.Variable;
@@ -22,19 +23,24 @@ public class DeprovisionClusterSpec {
         return new Plan(
                 new Project().key(new BambooKey("FORGE")).name("forge-lab"),
                 "Deprovision Cluster", new BambooKey("DEPROV"))
-            .description("Destroy named cluster + sweep leftovers")
-            .linkedRepositories(new VcsRepositoryIdentifier().name(HelloWorldSpec.REPO_NAME))
-            .variables(
-                new Variable("cluster_name", "lab1"))
-            .planBranchManagement(new PlanBranchManagement().delete(
-                new com.atlassian.bamboo.specs.api.builders.plan.branches.BranchCleanup()))
-            .stages(new Stage("Deprovision").jobs(
-                new Job("Deprovision", new BambooKey("JOB1")).tasks(
-                    new VcsCheckoutTask().description("checkout")
-                        .checkoutItems(new CheckoutItem().defaultRepository()),
-                    new ScriptTask().description("deprovision cluster")
-                        .inlineBody("provisioning/scripts/deprovision.sh "
-                            + "\"${bamboo.cluster_name}\""))));
+                .description("Destroy named cluster + sweep leftovers")
+                .linkedRepositories(new VcsRepositoryIdentifier().name(HelloWorldSpec.REPO_NAME))
+                .variables(
+                        new Variable("cluster_name", "lab1"))
+                .planBranchManagement(new PlanBranchManagement().delete(
+                        new com.atlassian.bamboo.specs.api.builders.plan.branches.BranchCleanup()))
+                .stages(new Stage("Deprovision").jobs(
+                        new Job("Deprovision", new BambooKey("JOB1"))
+                                // Host-only, same reason as ProvisionClusterSpec: the
+                                // multipass/terraform toolchain exists only on the host agent.
+                                .requirements(new Requirement("agent.role")
+                                        .matchValue("host").matchType(Requirement.MatchType.EQUALS))
+                                .tasks(
+                                new VcsCheckoutTask().description("checkout")
+                                        .checkoutItems(new CheckoutItem().defaultRepository()),
+                                new ScriptTask().description("deprovision cluster")
+                                        .inlineBody("provisioning/scripts/deprovision.sh "
+                                                + "\"${bamboo.cluster_name}\""))));
     }
 
     public static void main(String[] args) {

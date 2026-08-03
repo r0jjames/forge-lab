@@ -171,10 +171,11 @@ To keep jobs on the right agent:
 - The containerized agent declares capability `agent.role=ci`.
 - The "Build Agent Image" plan (and any future CI plan) adds a **requirement**
   `agent.role=ci` → schedules only on the containerized agent.
-- **Follow-up in forge-lab (separate, non-blocking change):** the
-  `ProvisionCluster` / `DeprovisionCluster` plans get a host-only requirement
-  (e.g. an existing host capability such as `system.builder.command.multipass`)
-  so they never land on the containerized agent, which has no multipass.
+- **Done in forge-lab:** the host agent declares `agent.role=host` (seeded by
+  `infra/agent/run-agent.sh`) and the `ProvisionCluster` / `DeprovisionCluster`
+  plans require it, so they never land on the containerized agent, which has no
+  multipass. Without this guard those jobs scheduled on the k8s agent and died
+  with `ERROR: missing tool: terraform`.
 
 ## Secrets
 

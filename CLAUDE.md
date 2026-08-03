@@ -22,7 +22,10 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
   (only needed for manual wizard / post-expiry; `bootstrap` handles it via secret)
 - `make agent-install` / `make agent-run` — host-local Bamboo agent. Token is
   auto-read from the `bamboo-agent-token` secret; approve the agent once in
-  Administration > Agents. Unattended setup already started the broker (54663)
+  Administration > Agents. Unattended setup already started the broker (54663).
+  `agent-run` seeds capability `agent.role=host`; the Provision/Deprovision
+  plans *require* it so they never schedule on the containerized k8s agent
+  (`agent.role=ci`), which has no terraform/multipass
 - `make provision CLUSTER=lab1 [TYPE=k8s|dcos]` / `make deprovision CLUSTER=lab1`
 - `make lint` — shellcheck + terraform fmt/validate + ansible-lint + mvn test
 
