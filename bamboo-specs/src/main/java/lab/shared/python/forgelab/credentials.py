@@ -7,6 +7,7 @@ shape as registry.py — pure render, then write — and standard library only.
 
 from __future__ import annotations
 
+import os
 import secrets
 from pathlib import Path
 
@@ -51,8 +52,13 @@ def write(cluster: str, values: dict) -> Path:
     """Write the credentials file, owner-readable only. Returns its path."""
     paths.FORGELAB_HOME.mkdir(parents=True, exist_ok=True)
     creds = path(cluster)
-    creds.write_text(render(cluster, values))
-    creds.chmod(0o600)
+    # Open with the mode already restricted rather than write_text() + chmod():
+    # the latter leaves a world-readable window between creation and chmod on
+    # the one file holding every lab secret. O_TRUNC (not O_EXCL) because this
+    # must still overwrite an existing file.
+    handle = os.open(creds, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(handle, "w") as out:
+        out.write(render(cluster, values))
     print(f"==> credentials: {creds}")
     return creds
 
