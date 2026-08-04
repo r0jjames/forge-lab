@@ -29,7 +29,8 @@ public class ProvisionClusterSpec {
                 .linkedRepositories(new VcsRepositoryIdentifier().name(SpecConstants.REPO_NAME))
                 .variables(
                         new Variable("cluster_name", "lab1"),
-                        new Variable("cluster_type", ""))
+                        new Variable("cluster_type", ""),
+                        new Variable("addons", ""))
                 .planBranchManagement(new PlanBranchManagement().delete(
                         new com.atlassian.bamboo.specs.api.builders.plan.branches.BranchCleanup()))
                 .pluginConfigurations(new ConcurrentBuilds().useSystemWideDefault(false))
@@ -53,7 +54,8 @@ public class ProvisionClusterSpec {
                                         .checkoutItems(new CheckoutItem().defaultRepository()),
                                 new ScriptTask().description("provision cluster")
                                         .inlineBody("bamboo-specs/src/main/java/lab/provisioncluster/scripts/provision.py "
-                                                + "\"${bamboo.cluster_name}\" \"${bamboo.cluster_type}\""))));
+                                                + "\"${bamboo.cluster_name}\" \"${bamboo.cluster_type}\" "
+                                                + "\"${bamboo.addons}\""))));
     }
 
     public static void main(String[] args) {

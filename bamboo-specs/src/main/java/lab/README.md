@@ -11,10 +11,11 @@ lab/
 │   ├── python/forgelab/        # the lab's one Python library (stdlib only)
 │   ├── terraform/              # VM lifecycle (modules/multipass = backend seam)
 │   ├── ansible/                # site.yml + roles, generated inventory (gitignored)
+│   │   └── roles/{common,dcos,k8s,hdfs,keycloak,opensearch}
 │   └── clusters/               # per-cluster tfvars (+ defaults.tfvars)
 ├── provisioncluster/           # FORGE-PROV
 │   ├── ProvisionClusterSpec.java
-│   └── scripts/{provision.py,verify.py}
+│   └── scripts/{provision.py,install.py,verify.py}
 ├── deprovisioncluster/         # FORGE-DEPROV
 │   ├── DeprovisionClusterSpec.java
 │   └── scripts/deprovision.py
@@ -41,6 +42,7 @@ the rest, so nothing here affects the build.
 | `inventory.py` | render the ansible inventory, read hosts back out          |
 | `sshconf.py`   | per-cluster `~/.forgelab/ssh_config.d/<cluster>.conf`      |
 | `registry.py`  | `cluster_registered/<cluster>_cluster_info.yml`            |
+| `credentials.py` | `~/.forgelab/<cluster>-credentials.yml`, per-cluster secrets |
 
 Parsing and rendering are pure functions taking and returning strings; every
 external command goes through `proc.run`. That split is what makes the tests

@@ -28,12 +28,17 @@ Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-f
   (`agent.role=ci`), which has no terraform/multipass. It also points the
   cluster registry at `<this clone>/cluster_registered`, via both
   `FORGELAB_REGISTRY_DIR` and `~/.forgelab/registry_dir`
-- `make provision CLUSTER=lab1 [TYPE=k8s|dcos]` / `make deprovision CLUSTER=lab1`
-  — provision also writes `~/.forgelab/ssh_config.d/<cluster>.conf` (included
-  from `~/.ssh/config`) so `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu`
-  with the lab key; deprovision removes it. Provision also writes
+- `make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=keycloak,hdfs,opensearch]`
+  / `make deprovision CLUSTER=lab1` — provision also writes
+  `~/.forgelab/ssh_config.d/<cluster>.conf` (included from `~/.ssh/config`) so
+  `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu` with the lab key;
+  deprovision removes it. `ADDONS=` overrides the cluster's tfvars for this
+  run; an empty value disables all addons. Provision also writes
   `cluster_registered/<cluster>_cluster_info.yml` (tracked, uncommitted) as its
   last step; deprovision deletes it
+- `make addons CLUSTER=lab1 [TYPE=k8s] [ADDONS=hdfs]` — re-run the install stage
+  only, against an existing cluster's inventory. Use it to iterate on an ansible
+  role without a full rebuild
 - `make lint` — pytest + terraform fmt/validate + ansible-lint + mvn test
   (pytest is a host tool like shellcheck was: `uv tool install pytest`)
 
@@ -45,7 +50,8 @@ one directory per Bamboo plan, holding its spec AND the code it runs:
 - `lab/<planid>/` — `<Name>Spec.java` + `scripts/` for that plan alone;
   the scripts are the CI-agnostic core, called by both the spec and the Makefile
 - `lab/shared/` — used by 2+ plans: `SpecConstants.java`,
-  `python/forgelab/` (the lab's one library, stdlib only),
+  `python/forgelab/` (the lab's one library, stdlib only; `credentials.py` writes
+  `~/.forgelab/<cluster>-credentials.yml`, referenced by the registry, never inlined),
   `terraform/` (`modules/multipass/` = swappable VM backend boundary),
   `ansible/`, `clusters/<name>.tfvars` (sizing; `defaults.tfvars` fallback)
 - `infra/` — lab operations NOT run by any plan: `helm/` chart values,
@@ -91,3 +97,9 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
 - Terraform applies run `-parallelism=1` (`terraform.apply_retry`): concurrent
   `multipass launch` races give every VM in the batch the same MAC, hence one
   shared DHCP lease. Do not drop the flag
+- Cluster addons are opt-in per cluster: `addons = "keycloak,hdfs,opensearch"` in
+  the cluster's tfvars, overridable by the `addons` Bamboo plan variable. The
+  list gates the ansible roles AND zeroes the VM roles of disabled addons, so
+  sizing and enablement cannot disagree. k9s is not an addon — it ships with the
+  k8s role. Addon secrets live in `~/.forgelab/<cluster>-credentials.yml` (0600)
+  and never in `cluster_registered/`
