@@ -20,10 +20,17 @@
     - "{{ opensearch_data_dir }}/data"
     - "{{ opensearch_data_dir }}/logs"
 
+# Multipass VMs are arm64 on Apple Silicon and amd64 elsewhere; OpenSearch's
+# own asset names use "x64" rather than "amd64" for the latter — verified
+# against the published artifact names, not assumed.
+- name: Resolve the OpenSearch release asset for this architecture
+  ansible.builtin.set_fact:
+    opensearch_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'x64' }}"
+
 - name: Download and unpack OpenSearch
   ansible.builtin.unarchive:
     src: >-
-      {{ opensearch_mirror }}/opensearch/{{ opensearch_version }}/opensearch-{{ opensearch_version }}-linux-arm64.tar.gz
+      {{ opensearch_mirror }}/opensearch/{{ opensearch_version }}/opensearch-{{ opensearch_version }}-linux-{{ opensearch_arch }}.tar.gz
     dest: "{{ opensearch_home }}"
     remote_src: true
     extra_opts: [--strip-components=1]

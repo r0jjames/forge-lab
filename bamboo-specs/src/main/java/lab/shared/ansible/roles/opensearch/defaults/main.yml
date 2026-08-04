@@ -12,7 +12,9 @@ opensearch_transport_port: 9300
 opensearch_heap_size: 1g
 
 opensearch_dashboards_version: "{{ opensearch_version }}"
-opensearch_dashboards_archive: "opensearch-dashboards-{{ opensearch_dashboards_version }}-linux-arm64.tar.gz"
+# opensearch_arch is set by tasks/install.yml, which always runs first (see
+# tasks/main.yml) on the same host — arch-detection lives in one place.
+opensearch_dashboards_archive: "opensearch-dashboards-{{ opensearch_dashboards_version }}-linux-{{ opensearch_arch }}.tar.gz"
 opensearch_dashboards_home: /opt/opensearch-dashboards
 opensearch_dashboards_user: opensearch-dashboards
 opensearch_dashboards_port: 5601
