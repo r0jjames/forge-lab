@@ -13,6 +13,18 @@
     enabled: true
     daemon_reload: true
 
+# The namenode unit is templated onto every data host in install.yml but only
+# formatted/started/enabled on groups['data'][0] above. If the primary ever
+# moves (e.g. inventory re-sort), a former primary keeps an enabled unit
+# pointed at a name directory nothing formats -- on reboot systemd starts it,
+# Restart=on-failure crash-loops it, and it squats the real NameNode's ports.
+- name: Stop and disable the namenode unit on non-primary data nodes
+  ansible.builtin.systemd:
+    name: hdfs-namenode
+    state: stopped
+    enabled: false
+  when: inventory_hostname != groups['data'][0]
+
 - name: Report installed components  # noqa: var-naming[no-role-prefix]
   ansible.builtin.set_fact:
     forgelab_components: >-
