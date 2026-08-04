@@ -44,6 +44,7 @@
   failed_when:
     - keycloak_realm_create.rc != 0
     - "'already exists' not in keycloak_realm_create.stderr"
+    - "'Conflict detected' not in keycloak_realm_create.stderr"
 
 - name: Create the public OIDC client
   ansible.builtin.command:
@@ -110,6 +111,7 @@
   failed_when:
     - keycloak_user_create.rc != 0
     - "'already exists' not in keycloak_user_create.stderr"
+    - "'exists with same email' not in keycloak_user_create.stderr"
 
 - name: Set the test user's password
   ansible.builtin.command:
