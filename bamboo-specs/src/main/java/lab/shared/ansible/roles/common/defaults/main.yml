@@ -4,6 +4,8 @@
 # opensearch role's http.port default rather than referencing it directly:
 # common runs in site.yml's first play, before the opensearch role has run
 # for any host, so opensearch_http_port is not yet a reliable cross-role
-# reference. Keep the two in sync if either changes.
+# reference. Keep in sync with roles/opensearch/defaults/main.yml's
+# opensearch_http_port and provisioncluster/scripts/verify.py's OPENSEARCH_PORT.
 common_fluentbit_opensearch_port: 9200
+# Keep in sync with verify.py's OPENSEARCH_INDEX.
 common_fluentbit_index: forgelab-logs

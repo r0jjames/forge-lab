@@ -53,17 +53,17 @@ def default_storage_class(text: str) -> str:
     return ""
 
 
-def _ssh(mgmt_ip: str, command: str, stdin: str = None) -> subprocess.CompletedProcess:
+def _ssh(mgmt_ip: str, command: str) -> subprocess.CompletedProcess:
     """Run `command` on the remote host.
 
-    `stdin`, when given, is piped to the remote command over the SSH channel
-    rather than interpolated into `command` itself — the only way to hand a
-    secret to a remote process without it landing in that process's argv,
-    which any user on the box can read via `ps`.
+    No `stdin` parameter: nothing here needs one currently. If a future
+    verifier has to hand a secret to a remote command, pipe it over the SSH
+    channel via `subprocess.run(..., input=...)` rather than interpolating it
+    into `command` itself — argv is world-readable via `ps` to any user on
+    the box, so interpolation is the one thing to avoid.
     """
     return subprocess.run(
         ["ssh", "-i", str(paths.SSH_KEY), *SSH_OPTS, f"ubuntu@{mgmt_ip}", command],
-        input=stdin,
         capture_output=True,
         text=True,
     )
@@ -170,7 +170,10 @@ def _verify_hdfs(data_ip: str, expected: int):
     print(f"hdfs roundtripped a file through {HDFS_APP_DIR}")
 
 
+# Keep in sync with roles/common/defaults/main.yml's common_fluentbit_opensearch_port
+# and roles/opensearch/defaults/main.yml's opensearch_http_port.
 OPENSEARCH_PORT = 9200
+# Keep in sync with roles/common/defaults/main.yml's common_fluentbit_index.
 OPENSEARCH_INDEX = "forgelab-logs"
 
 
