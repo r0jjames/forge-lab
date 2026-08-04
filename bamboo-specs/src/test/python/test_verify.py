@@ -109,3 +109,41 @@ def test_live_datanodes_is_zero_on_an_empty_report():
 def test_live_datanodes_ignores_the_dead_datanodes_section():
     text = "Live datanodes (2):\n\nDead datanodes (5):\n"
     assert verify.live_datanodes(text) == 2
+
+
+SEARCH_SERVERS = """Server:192.168.252.32:8089
+	Status:Up
+	Cluster Label:
+Server:192.168.252.33:8089
+	Status:Up
+	Cluster Label:
+"""
+
+
+def test_search_peers_up_counts_the_reachable_peers():
+    assert verify.search_peers_up(SEARCH_SERVERS) == 2
+
+
+def test_search_peers_up_ignores_a_down_peer():
+    text = "Server:a:8089\n\tStatus:Up\nServer:b:8089\n\tStatus:Down\n"
+    assert verify.search_peers_up(text) == 1
+
+
+def test_search_peers_up_is_zero_with_no_peers():
+    assert verify.search_peers_up("") == 0
+
+
+def test_stats_count_reads_the_single_value():
+    assert verify.stats_count('count\n1421\n') == 1421
+
+
+def test_stats_count_tolerates_quoted_csv():
+    assert verify.stats_count('"count"\n"7"\n') == 7
+
+
+def test_stats_count_is_zero_when_the_search_returned_nothing():
+    assert verify.stats_count("count\n") == 0
+
+
+def test_stats_count_is_zero_on_unparseable_output():
+    assert verify.stats_count("Login failed\n") == 0

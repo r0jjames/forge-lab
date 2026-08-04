@@ -53,9 +53,17 @@ def default_storage_class(text: str) -> str:
     return ""
 
 
-def _ssh(mgmt_ip: str, command: str) -> subprocess.CompletedProcess:
+def _ssh(mgmt_ip: str, command: str, stdin: str = None) -> subprocess.CompletedProcess:
+    """Run `command` on the remote host.
+
+    `stdin`, when given, is piped to the remote command over the SSH channel
+    rather than interpolated into `command` itself — the only way to hand a
+    secret to a remote process without it landing in that process's argv,
+    which any user on the box can read via `ps`.
+    """
     return subprocess.run(
         ["ssh", "-i", str(paths.SSH_KEY), *SSH_OPTS, f"ubuntu@{mgmt_ip}", command],
+        input=stdin,
         capture_output=True,
         text=True,
     )
@@ -162,6 +170,67 @@ def _verify_hdfs(data_ip: str, expected: int):
     print(f"hdfs roundtripped a file through {HDFS_APP_DIR}")
 
 
+SPLUNK_HOME = "/opt/splunk"
+_PEER_UP_RE = re.compile(r"Status:\s*Up\b")
+
+
+def search_peers_up(text: str) -> int:
+    """Peers reporting Up in `splunk list search-server` output."""
+    return len(_PEER_UP_RE.findall(text))
+
+
+def stats_count(csv_text: str) -> int:
+    """The value under the `count` header of `splunk search ... -output csv`."""
+    rows = [row.strip() for row in csv_text.splitlines() if row.strip()]
+    if len(rows) < 2:
+        return 0
+    try:
+        return int(rows[1].strip('"'))
+    except ValueError:
+        return 0
+
+
+def _verify_splunk(head_ip: str, expected_peers: int, password: str):
+    if not password:
+        proc.die("no splunk_admin_password in the cluster's credentials file")
+
+    # Splunk's CLI has no file-based auth for one-shot calls, only `-auth
+    # user:pass` or the SPLUNK_USERNAME/SPLUNK_PASSWORD environment variables.
+    # `-auth` (and `env VAR=value cmd`, which puts "VAR=value" in the `env`
+    # process's own argv) both land the password in a remote process's argv,
+    # which any user on the box can read via `ps` — the mistake this plan
+    # already made once for Keycloak. Instead the password travels only over
+    # the SSH channel's stdin: the remote shell reads it off stdin into a
+    # variable that is exported solely into splunk's environment, so the
+    # secret never appears as a token in any remote process's argv.
+    def _authed(command: str) -> subprocess.CompletedProcess:
+        script = (
+            "IFS= read -r SPLUNK_PASSWORD && "
+            f'SPLUNK_USERNAME=admin SPLUNK_PASSWORD="$SPLUNK_PASSWORD" {command}'
+        )
+        return _ssh(head_ip, script, stdin=f"{password}\n")
+
+    print(f"==> verify: {expected_peers} search peers on {head_ip}")
+    for _ in range(ATTEMPTS):
+        result = _authed(f"{SPLUNK_HOME}/bin/splunk list search-server")
+        if result.returncode == 0 and search_peers_up(result.stdout) >= expected_peers:
+            break
+        time.sleep(INTERVAL_SECONDS)
+    else:
+        proc.die(f"fewer than {expected_peers} search peers Up within timeout")
+
+    # Forwarder data is the slow signal: the peers can be Up long before any
+    # host has shipped an event.
+    query = "search index=_internal earliest=-1h | stats count"
+    for _ in range(ATTEMPTS):
+        result = _authed(f"{SPLUNK_HOME}/bin/splunk search '{query}' -output csv")
+        if result.returncode == 0 and stats_count(result.stdout) > 0:
+            print(f"splunk searched {stats_count(result.stdout)} events across its peers")
+            return
+        time.sleep(INTERVAL_SECONDS)
+    proc.die("splunk returned no events from a distributed search within timeout")
+
+
 def _verify_dcos(mgmt_ip: str):
     url = f"http://{mgmt_ip}/"
     print(f"==> verify: DC/OS UI health on {url}")
@@ -205,6 +274,12 @@ def main(argv):
         if not data_ip:
             proc.die("hdfs is enabled but the inventory has no data hosts")
         _verify_hdfs(data_ip, len(inventory.group_ips(text, "data")))
+    if "splunk" in addons:
+        head_ip = inventory.first_ip(text, "splunk")
+        if not head_ip:
+            proc.die("splunk is enabled but the inventory has no splunk hosts")
+        peers = max(len(inventory.group_ips(text, "splunk")) - 1, 0)
+        _verify_splunk(head_ip, peers, secrets_values.get("splunk_admin_password", ""))
 
 
 if __name__ == "__main__":
