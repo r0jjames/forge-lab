@@ -75,3 +75,37 @@ def test_field_from_is_empty_on_a_json_array():
 
 def test_field_from_is_empty_on_a_non_string_value():
     assert verify.field_from('{"access_token": 5}', "access_token") == ""
+
+
+DFSADMIN_REPORT = """Configured Capacity: 126421467136 (117.74 GB)
+Present Capacity: 112233445566 (104.5 GB)
+DFS Remaining: 112233445566 (104.5 GB)
+
+-------------------------------------------------
+Live datanodes (3):
+
+Name: 192.168.252.21:9866 (lab1-data-1)
+Hostname: lab1-data-1
+Decommission Status : Normal
+"""
+
+
+def test_live_datanodes_counts_the_reported_nodes():
+    assert verify.live_datanodes(DFSADMIN_REPORT) == 3
+
+
+def test_live_datanodes_is_zero_when_the_section_is_absent():
+    assert verify.live_datanodes("Configured Capacity: 0 (0 B)\n") == 0
+
+
+def test_live_datanodes_reads_a_single_node_cluster():
+    assert verify.live_datanodes("Live datanodes (1):\n") == 1
+
+
+def test_live_datanodes_is_zero_on_an_empty_report():
+    assert verify.live_datanodes("") == 0
+
+
+def test_live_datanodes_ignores_the_dead_datanodes_section():
+    text = "Live datanodes (2):\n\nDead datanodes (5):\n"
+    assert verify.live_datanodes(text) == 2

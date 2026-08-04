@@ -2,6 +2,7 @@
 """Poll a freshly provisioned cluster until it reports healthy."""
 
 import json
+import re
 import subprocess
 import sys
 import time
@@ -129,6 +130,38 @@ def _verify_keycloak(mgmt_ip: str, password: str):
     print(f"keycloak issued a token for {KEYCLOAK_USER}@{KEYCLOAK_REALM}")
 
 
+HDFS_APP_DIR = "/user/app"
+_LIVE_DATANODES_RE = re.compile(r"Live datanodes \((\d+)\)")
+
+
+def live_datanodes(report: str) -> int:
+    """The count from `Live datanodes (N):` in `hdfs dfsadmin -report` output."""
+    match = _LIVE_DATANODES_RE.search(report)
+    return int(match.group(1)) if match else 0
+
+
+def _verify_hdfs(data_ip: str, expected: int):
+    print(f"==> verify: {expected} live datanodes on {data_ip}")
+    for _ in range(ATTEMPTS):
+        result = _ssh(data_ip, "hdfs dfsadmin -report")
+        if result.returncode == 0 and live_datanodes(result.stdout) >= expected:
+            break
+        time.sleep(INTERVAL_SECONDS)
+    else:
+        proc.die(f"fewer than {expected} live datanodes within timeout")
+
+    # A report can be healthy while writes fail — prove a roundtrip too.
+    token = "forgelab-verify"
+    result = _ssh(
+        data_ip,
+        f"printf '{token}' | hdfs dfs -put -f - {HDFS_APP_DIR}/verify.txt "
+        f"&& hdfs dfs -cat {HDFS_APP_DIR}/verify.txt",
+    )
+    if result.returncode != 0 or token not in result.stdout:
+        proc.die(f"could not write and read back {HDFS_APP_DIR}/verify.txt")
+    print(f"hdfs roundtripped a file through {HDFS_APP_DIR}")
+
+
 def _verify_dcos(mgmt_ip: str):
     url = f"http://{mgmt_ip}/"
     print(f"==> verify: DC/OS UI health on {url}")
@@ -167,6 +200,11 @@ def main(argv):
     secrets_values = credentials.read(cluster)
     if "keycloak" in addons:
         _verify_keycloak(mgmt_ip, secrets_values.get("keycloak_app_user_password", ""))
+    if "hdfs" in addons:
+        data_ip = inventory.first_ip(text, "data")
+        if not data_ip:
+            proc.die("hdfs is enabled but the inventory has no data hosts")
+        _verify_hdfs(data_ip, len(inventory.group_ips(text, "data")))
 
 
 if __name__ == "__main__":
