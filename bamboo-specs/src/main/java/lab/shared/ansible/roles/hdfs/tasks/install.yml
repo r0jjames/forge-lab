@@ -5,6 +5,15 @@
     state: present
     update_cache: true
 
+# namenode.yml runs commands as hdfs_user via `become_user`. Ansible shares
+# its per-task temp dir with that user through POSIX ACLs (setfacl); without
+# the acl package it falls back to a BSD-style `chmod A+...` that GNU
+# coreutils rejects outright, and every become_user task fails.
+- name: Install acl for become_user privilege dropping
+  ansible.builtin.apt:
+    name: acl
+    state: present
+
 - name: Locate JAVA_HOME
   ansible.builtin.shell: |
     set -eo pipefail
