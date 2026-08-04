@@ -33,18 +33,18 @@
     - role: hdfs
       when: "'hdfs' in addons.split(',')"
 
-- name: Splunk on the splunk nodes
-  hosts: splunk
+- name: OpenSearch on the opensearch nodes
+  hosts: opensearch
   become: true
   roles:
-    - role: splunk
-      when: "'splunk' in addons.split(',')"
+    - role: opensearch
+      when: "'opensearch' in addons.split(',')"
 
 # Hand the component facts the roles set back to provision.py, which renders
 # them into cluster_registered/<cluster>_cluster_info.yml. forgelab_components
 # is set with set_fact, which is host-scoped, and roles run on different host
-# groups (k8s on mgmt+compute, keycloak on mgmt[0], hdfs on data, splunk on
-# splunk) -- so no single host has the full picture. Aggregate across every
+# groups (k8s on mgmt+compute, keycloak on mgmt[0], hdfs on data, opensearch on
+# opensearch) -- so no single host has the full picture. Aggregate across every
 # host in the (naturally sorted, so stable) inventory before writing.
 - name: Record installed components
   hosts: mgmt[0]

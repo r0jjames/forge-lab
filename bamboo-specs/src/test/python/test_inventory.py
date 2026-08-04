@@ -13,16 +13,16 @@ DATA = [
     Node("lab1-data-1", ["192.168.252.21"]),
     Node("lab1-data-2", ["192.168.252.22"]),
 ]
-SPLUNK = [Node("lab1-splunk-1", ["192.168.252.31"])]
+OPENSEARCH = [Node("lab1-opensearch-1", ["192.168.252.31"])]
 
 
 def bare(cluster="lab1"):
-    """A cluster with no addons: the data and splunk groups are empty."""
-    return {"mgmt": MGMT, "compute": COMPUTE, "data": [], "splunk": []}
+    """A cluster with no addons: the data and opensearch groups are empty."""
+    return {"mgmt": MGMT, "compute": COMPUTE, "data": [], "opensearch": []}
 
 
 def loaded():
-    return {"mgmt": MGMT, "compute": COMPUTE, "data": DATA, "splunk": SPLUNK}
+    return {"mgmt": MGMT, "compute": COMPUTE, "data": DATA, "opensearch": OPENSEARCH}
 
 
 def test_render_produces_the_expected_inventory():
@@ -36,7 +36,7 @@ def test_render_produces_the_expected_inventory():
         "\n"
         "[data]\n"
         "\n"
-        "[splunk]\n"
+        "[opensearch]\n"
         "\n"
         "[k8s_nodes:children]\n"
         "mgmt\n"
@@ -55,7 +55,7 @@ def test_render_emits_empty_groups_so_plays_resolve_to_zero_hosts():
     """A `hosts: data` play must find an empty group, not an unknown one."""
     text = inventory.render("lab1", bare())
     assert "[data]\n" in text
-    assert "[splunk]\n" in text
+    assert "[opensearch]\n" in text
 
 
 def test_render_uses_the_lan_address_not_the_pod_address():
@@ -69,7 +69,7 @@ def test_parse_hosts_reads_every_group():
         ("lab1-compute-2", "192.168.252.12"),
         ("lab1-data-1", "192.168.252.21"),
         ("lab1-data-2", "192.168.252.22"),
-        ("lab1-splunk-1", "192.168.252.31"),
+        ("lab1-opensearch-1", "192.168.252.31"),
     ]
 
 
@@ -99,7 +99,7 @@ def test_find_duplicate_ips_is_empty_for_a_healthy_cluster():
 def test_first_ip_returns_the_first_host_of_the_named_group():
     text = inventory.render("lab1", loaded())
     assert inventory.first_ip(text, "data") == "192.168.252.21"
-    assert inventory.first_ip(text, "splunk") == "192.168.252.31"
+    assert inventory.first_ip(text, "opensearch") == "192.168.252.31"
 
 
 def test_first_ip_is_empty_for_an_empty_or_absent_group():
@@ -116,7 +116,7 @@ def test_group_ips_returns_every_host_of_the_group_in_order():
 
 
 def test_group_ips_is_empty_for_an_empty_group():
-    assert inventory.group_ips(inventory.render("lab1", bare()), "splunk") == []
+    assert inventory.group_ips(inventory.render("lab1", bare()), "opensearch") == []
 
 
 def test_mgmt_ip_returns_the_first_mgmt_host():
@@ -160,9 +160,9 @@ def test_render_sorts_nodes_within_a_group_regardless_of_input_order():
             Node("lab1-data-1", ["192.168.252.21"]),
             Node("lab1-data-2", ["192.168.252.22"]),
         ],
-        "splunk": [
-            Node("lab1-splunk-2", ["192.168.252.32"]),
-            Node("lab1-splunk-1", ["192.168.252.31"]),
+        "opensearch": [
+            Node("lab1-opensearch-2", ["192.168.252.32"]),
+            Node("lab1-opensearch-1", ["192.168.252.31"]),
         ],
     }
     text = inventory.render("lab1", scrambled)
@@ -171,7 +171,7 @@ def test_render_sorts_nodes_within_a_group_regardless_of_input_order():
         "192.168.252.22",
         "192.168.252.23",
     ]
-    assert inventory.group_ips(text, "splunk") == [
+    assert inventory.group_ips(text, "opensearch") == [
         "192.168.252.31",
         "192.168.252.32",
     ]
@@ -187,7 +187,7 @@ def test_render_natural_sorts_double_digit_node_numbers():
             Node("lab1-data-2", ["192.168.252.22"]),
             Node("lab1-data-1", ["192.168.252.21"]),
         ],
-        "splunk": [],
+        "opensearch": [],
     }
     text = inventory.render("lab1", nodes)
     assert inventory.parse_hosts(text)[3:6] == [
@@ -199,7 +199,7 @@ def test_render_natural_sorts_double_digit_node_numbers():
 
 def test_render_preserves_the_callers_group_order():
     """Sorting is within a group only; group order itself is untouched — it
-    is the caller's dict order (mgmt, compute, data, splunk in provision.py)."""
+    is the caller's dict order (mgmt, compute, data, opensearch in provision.py)."""
     text = inventory.render("lab1", loaded())
     headers = [line for line in text.splitlines() if line.startswith("[")]
-    assert headers == ["[mgmt]", "[compute]", "[data]", "[splunk]", "[k8s_nodes:children]", "[all:vars]"]
+    assert headers == ["[mgmt]", "[compute]", "[data]", "[opensearch]", "[k8s_nodes:children]", "[all:vars]"]

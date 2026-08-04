@@ -111,39 +111,64 @@ def test_live_datanodes_ignores_the_dead_datanodes_section():
     assert verify.live_datanodes(text) == 2
 
 
-SEARCH_SERVERS = """Server:192.168.252.32:8089
-	Status:Up
-	Cluster Label:
-Server:192.168.252.33:8089
-	Status:Up
-	Cluster Label:
-"""
+HEALTH_PAYLOAD = '{"status": "green", "number_of_nodes": 3}'
 
 
-def test_search_peers_up_counts_the_reachable_peers():
-    assert verify.search_peers_up(SEARCH_SERVERS) == 2
+def test_cluster_nodes_reads_a_well_formed_health_payload():
+    assert verify.cluster_nodes(HEALTH_PAYLOAD) == 3
 
 
-def test_search_peers_up_ignores_a_down_peer():
-    text = "Server:a:8089\n\tStatus:Up\nServer:b:8089\n\tStatus:Down\n"
-    assert verify.search_peers_up(text) == 1
+def test_cluster_nodes_is_zero_when_the_key_is_missing():
+    assert verify.cluster_nodes('{"status": "green"}') == 0
 
 
-def test_search_peers_up_is_zero_with_no_peers():
-    assert verify.search_peers_up("") == 0
+def test_cluster_nodes_is_zero_on_malformed_json():
+    assert verify.cluster_nodes("<html>404</html>") == 0
 
 
-def test_stats_count_reads_the_single_value():
-    assert verify.stats_count('count\n1421\n') == 1421
+def test_cluster_nodes_is_zero_on_a_json_array():
+    assert verify.cluster_nodes('[{"number_of_nodes": 3}]') == 0
 
 
-def test_stats_count_tolerates_quoted_csv():
-    assert verify.stats_count('"count"\n"7"\n') == 7
+def test_cluster_nodes_is_zero_on_a_non_integer_value():
+    assert verify.cluster_nodes('{"number_of_nodes": "three"}') == 0
 
 
-def test_stats_count_is_zero_when_the_search_returned_nothing():
-    assert verify.stats_count("count\n") == 0
+def test_cluster_status_reads_a_well_formed_health_payload():
+    assert verify.cluster_status(HEALTH_PAYLOAD) == "green"
 
 
-def test_stats_count_is_zero_on_unparseable_output():
-    assert verify.stats_count("Login failed\n") == 0
+def test_cluster_status_is_empty_when_the_key_is_missing():
+    assert verify.cluster_status('{"number_of_nodes": 3}') == ""
+
+
+def test_cluster_status_is_empty_on_malformed_json():
+    assert verify.cluster_status("<html>404</html>") == ""
+
+
+def test_cluster_status_is_empty_on_a_json_array():
+    assert verify.cluster_status('[{"status": "green"}]') == ""
+
+
+def test_doc_count_reads_a_well_formed_count_payload():
+    assert verify.doc_count('{"count": 1421}') == 1421
+
+
+def test_doc_count_is_zero_for_a_zero_count():
+    assert verify.doc_count('{"count": 0}') == 0
+
+
+def test_doc_count_is_zero_when_the_key_is_missing():
+    assert verify.doc_count('{"_shards": {}}') == 0
+
+
+def test_doc_count_is_zero_on_malformed_json():
+    assert verify.doc_count("<html>404</html>") == 0
+
+
+def test_doc_count_is_zero_on_a_json_array():
+    assert verify.doc_count('[{"count": 5}]') == 0
+
+
+def test_doc_count_is_zero_on_a_non_integer_value():
+    assert verify.doc_count('{"count": "five"}') == 0

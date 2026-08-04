@@ -35,8 +35,10 @@ def test_extra_vars_joins_an_empty_addon_list_to_an_empty_string():
 
 
 def test_extra_vars_merges_the_secrets_in():
-    payload = install.extra_vars("k8s", ["splunk"], Path("/r"), {"splunk_admin_password": "x"})
-    assert payload["splunk_admin_password"] == "x"
+    payload = install.extra_vars(
+        "k8s", ["keycloak"], Path("/r"), {"keycloak_admin_password": "x"}
+    )
+    assert payload["keycloak_admin_password"] == "x"
 
 
 def test_run_refuses_a_cluster_with_no_inventory(lab):
@@ -53,14 +55,14 @@ def test_run_invokes_the_playbook_with_the_inventory(lab):
 
 def test_run_passes_variables_by_file_never_on_the_command_line(lab):
     """argv is world-readable in `ps`; a password must never appear there."""
-    install.run("lab1", "k8s", ["splunk"])
+    install.run("lab1", "k8s", ["keycloak"])
     call = lab.recorded[0]
     assert any(arg.startswith("@") for arg in call)
     assert not any("password" in arg for arg in call)
 
 
 def test_run_writes_the_credentials_file_for_addons_that_need_one(lab):
-    install.run("lab1", "k8s", ["splunk"])
+    install.run("lab1", "k8s", ["keycloak"])
     assert install.credentials.path("lab1").is_file()
 
 
@@ -70,7 +72,7 @@ def test_run_writes_no_credentials_file_when_nothing_needs_one(lab):
 
 
 def test_run_deletes_the_variables_file_afterwards(lab):
-    install.run("lab1", "k8s", ["splunk"])
+    install.run("lab1", "k8s", ["keycloak"])
     varsfile = next(a[1:] for a in lab.recorded[0] if a.startswith("@"))
     assert not Path(varsfile).exists()
 
@@ -84,9 +86,9 @@ def test_the_variables_file_is_owner_only_while_it_exists(lab, monkeypatch):
         seen["payload"] = json.loads(varsfile.read_text())
 
     monkeypatch.setattr(install.proc, "run", capture)
-    install.run("lab1", "k8s", ["splunk"])
+    install.run("lab1", "k8s", ["keycloak"])
     assert seen["mode"] == 0o600
-    assert seen["payload"]["splunk_admin_password"]
+    assert seen["payload"]["keycloak_admin_password"]
 
 
 def test_run_does_not_regenerate_passwords_on_a_second_run(lab, monkeypatch):
@@ -126,7 +128,7 @@ def test_run_deletes_the_variables_file_even_when_the_playbook_fails(lab, monkey
 
     monkeypatch.setattr(install.proc, "run", fail)
     with pytest.raises(LabError):
-        install.run("lab1", "k8s", ["splunk"])
+        install.run("lab1", "k8s", ["keycloak"])
     assert not Path(seen["varsfile"]).exists()
 
 

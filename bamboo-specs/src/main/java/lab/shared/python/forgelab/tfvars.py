@@ -14,7 +14,7 @@ CLUSTER_TYPES = ("k8s", "dcos")
 
 # k9s is deliberately absent: it is a kubectl TUI, installed unconditionally by
 # the k8s role, not something a cluster opts into.
-ADDONS = ("keycloak", "hdfs", "splunk")
+ADDONS = ("keycloak", "hdfs", "opensearch")
 
 
 def resolve(cluster: str) -> Path:

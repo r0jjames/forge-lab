@@ -12,15 +12,15 @@ from pathlib import Path
 
 from . import paths
 
-# The generated secrets each addon needs. An addon absent from this map (hdfs)
-# simply has none.
+# The generated secrets each addon needs. An addon absent from this map (hdfs,
+# opensearch) simply has none — opensearch runs with its security plugin
+# disabled, the normal posture for a local lab.
 SECRET_KEYS = {
     "keycloak": ("keycloak_admin_password", "keycloak_app_user_password"),
-    "splunk": ("splunk_admin_password",),
 }
 
-# token_urlsafe(18) is 24 characters of [A-Za-z0-9_-]: comfortably past Splunk's
-# 8-character floor, and safe inside a double-quoted YAML scalar unescaped.
+# token_urlsafe(18) is 24 characters of [A-Za-z0-9_-]: comfortably long, and
+# safe inside a double-quoted YAML scalar unescaped.
 PASSWORD_BYTES = 18
 
 

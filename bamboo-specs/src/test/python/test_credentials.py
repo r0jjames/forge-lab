@@ -12,7 +12,11 @@ def home(tmp_path, monkeypatch):
 
 
 def test_generate_covers_only_the_enabled_addons():
-    assert sorted(credentials.generate(["splunk"])) == ["splunk_admin_password"]
+    """hdfs has no secrets, so only keycloak's keys are minted."""
+    assert sorted(credentials.generate(["keycloak", "hdfs"])) == [
+        "keycloak_admin_password",
+        "keycloak_app_user_password",
+    ]
 
 
 def test_generate_covers_keycloak_admin_and_app_user():
@@ -31,14 +35,13 @@ def test_generate_is_empty_for_no_addons():
 
 
 def test_generate_never_repeats_a_password():
-    values = credentials.generate(["keycloak", "splunk"])
-    assert len(set(values.values())) == 3
+    values = credentials.generate(["keycloak"])
+    assert len(set(values.values())) == len(values) == 2
 
 
-def test_generate_passwords_are_long_enough_for_splunk():
-    """Splunk refuses an admin password shorter than 8 characters."""
-    values = credentials.generate(["splunk"])
-    assert len(values["splunk_admin_password"]) >= 8
+def test_generate_passwords_are_reasonably_long():
+    values = credentials.generate(["keycloak"])
+    assert all(len(v) >= 16 for v in values.values())
 
 
 def test_render_quotes_values_and_sorts_keys():
@@ -52,7 +55,7 @@ def test_render_names_the_cluster_in_the_header():
 
 
 def test_write_is_owner_only(home):
-    creds = credentials.write("lab1", {"splunk_admin_password": "hunter22"})
+    creds = credentials.write("lab1", {"keycloak_admin_password": "hunter22"})
     assert stat.S_IMODE(creds.stat().st_mode) == 0o600
 
 
@@ -61,7 +64,7 @@ def test_write_lands_beside_the_ssh_key_not_in_the_repo(home):
 
 
 def test_read_round_trips_what_write_wrote(home):
-    values = {"splunk_admin_password": "hunter22", "keycloak_admin_password": "abc-_1"}
+    values = {"keycloak_app_user_password": "hunter22", "keycloak_admin_password": "abc-_1"}
     credentials.write("lab1", values)
     assert credentials.read("lab1") == values
 
@@ -71,7 +74,7 @@ def test_read_is_empty_when_there_is_no_file(home):
 
 
 def test_remove_deletes_the_file(home):
-    credentials.write("lab1", {"splunk_admin_password": "hunter22"})
+    credentials.write("lab1", {"keycloak_admin_password": "hunter22"})
     credentials.remove("lab1")
     assert not credentials.path("lab1").exists()
 
@@ -111,10 +114,13 @@ def test_ensure_called_twice_returns_identical_values(home):
     assert second == first
 
 
-def test_ensure_preserves_a_key_belonging_to_an_addon_not_in_the_current_list(home):
-    original = credentials.ensure("lab1", ["keycloak", "splunk"])
+def test_ensure_preserves_a_key_not_owned_by_any_currently_enabled_addon(home):
+    """A key left over from an addon that is no longer in the addons list
+    (disabled, or renamed away entirely) must survive ensure() rather than
+    being dropped, same as the keycloak stability guarantee above."""
+    credentials.write("lab1", {"keycloak_admin_password": "hunter22", "legacy_password": "x"})
     values = credentials.ensure("lab1", ["keycloak"])
-    assert values["splunk_admin_password"] == original["splunk_admin_password"]
+    assert values["legacy_password"] == "x"
 
 
 def test_ensure_fills_in_a_missing_key_while_leaving_an_existing_one_untouched(home):

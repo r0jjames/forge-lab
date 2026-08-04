@@ -78,19 +78,19 @@ variable "data_disk" {
   type    = string
   default = "40G"
 }
-variable "splunk_count" {
+variable "opensearch_count" {
   type    = number
   default = 0
 }
-variable "splunk_cpu" {
+variable "opensearch_cpu" {
   type    = number
   default = 2
 }
-variable "splunk_mem" {
+variable "opensearch_mem" {
   type    = string
   default = "6G"
 }
-variable "splunk_disk" {
+variable "opensearch_disk" {
   type    = string
   default = "40G"
 }

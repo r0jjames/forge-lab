@@ -6,7 +6,7 @@
     update_cache: true
 
 # Swap, bridge modules and sysctls are cluster-node preparation. The data and
-# splunk VMs are not cluster nodes and must not be touched by it — HDFS in
+# opensearch VMs are not cluster nodes and must not be touched by it — HDFS in
 # particular has no reason to run with swap off.
 - name: Cluster-node kernel preparation
   ansible.builtin.include_tasks: cluster_node.yml

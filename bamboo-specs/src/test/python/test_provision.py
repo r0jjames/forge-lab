@@ -189,9 +189,9 @@ def test_passes_the_resolved_cluster_type_to_ansible(lab, monkeypatch):
 
 
 def test_resolve_addons_reads_the_tfvars_file():
-    assert provision.resolve_addons("", 'addons = "hdfs,splunk"\n', "f.tfvars") == [
+    assert provision.resolve_addons("", 'addons = "hdfs,opensearch"\n', "f.tfvars") == [
         "hdfs",
-        "splunk",
+        "opensearch",
     ]
 
 
@@ -217,7 +217,7 @@ def test_resolve_addons_rejects_an_unknown_name_from_the_override():
 
 
 def test_resolve_addons_names_the_known_addons_in_the_error():
-    with pytest.raises(LabError, match="known: keycloak hdfs splunk"):
+    with pytest.raises(LabError, match="known: keycloak hdfs opensearch"):
         provision.resolve_addons("kafka", "", "f.tfvars")
 
 
@@ -237,22 +237,22 @@ def test_addons_argument_overrides_the_tfvars_file(lab, monkeypatch):
 
 def test_node_count_overrides_zeroes_every_role_when_no_addons():
     assert provision.node_count_overrides([]) == [
-        "-var", "data_count=0", "-var", "splunk_count=0",
+        "-var", "data_count=0", "-var", "opensearch_count=0",
     ]
 
 
 def test_node_count_overrides_leaves_an_enabled_role_alone():
-    assert provision.node_count_overrides(["hdfs"]) == ["-var", "splunk_count=0"]
+    assert provision.node_count_overrides(["hdfs"]) == ["-var", "opensearch_count=0"]
 
 
 def test_node_count_overrides_is_empty_when_every_role_is_wanted():
-    assert provision.node_count_overrides(["hdfs", "splunk", "keycloak"]) == []
+    assert provision.node_count_overrides(["hdfs", "opensearch", "keycloak"]) == []
 
 
 def test_keycloak_alone_builds_no_extra_vms():
     """Keycloak runs on the k8s cluster; it needs no VM role of its own."""
     assert provision.node_count_overrides(["keycloak"]) == [
-        "-var", "data_count=0", "-var", "splunk_count=0",
+        "-var", "data_count=0", "-var", "opensearch_count=0",
     ]
 
 
@@ -261,12 +261,12 @@ def test_apply_zeroes_the_vm_roles_of_disabled_addons(lab):
     provision.main(["lab1"])
     apply = next(c for c in lab.calls if c[0] == "tf-apply")
     assert "data_count=0" in apply
-    assert "splunk_count=0" in apply
+    assert "opensearch_count=0" in apply
 
 
 def test_apply_keeps_the_vm_roles_of_enabled_addons(lab):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,splunk"\n')
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,opensearch"\n')
     provision.main(["lab1"])
     apply = next(c for c in lab.calls if c[0] == "tf-apply")
     assert "data_count=0" not in apply
-    assert "splunk_count=0" not in apply
+    assert "opensearch_count=0" not in apply

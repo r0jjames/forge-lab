@@ -55,8 +55,8 @@ def test_parse_ignores_comments_and_blank_lines():
 
 
 def test_parse_addons_splits_the_comma_list():
-    text = 'addons = "keycloak,hdfs,splunk"\n'
-    assert tfvars_mod.parse_addons(text) == ["keycloak", "hdfs", "splunk"]
+    text = 'addons = "keycloak,hdfs,opensearch"\n'
+    assert tfvars_mod.parse_addons(text) == ["keycloak", "hdfs", "opensearch"]
 
 
 def test_parse_addons_tolerates_spaces_and_trailing_commas():
@@ -73,7 +73,7 @@ def test_parse_addons_is_empty_when_the_key_is_absent():
 
 
 def test_parse_addons_ignores_a_commented_line():
-    assert tfvars_mod.parse_addons('# addons = "splunk"\n') == []
+    assert tfvars_mod.parse_addons('# addons = "opensearch"\n') == []
 
 
 def test_parse_still_reads_the_new_sizing_scalars():

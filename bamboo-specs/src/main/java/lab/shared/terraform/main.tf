@@ -21,10 +21,10 @@ locals {
       cpus = var.data_cpu, memory = var.data_mem, disk = var.data_disk
     }
   }
-  splunk_nodes = {
-    for i in range(var.splunk_count) :
-    "${var.cluster_name}-splunk-${i + 1}" => {
-      cpus = var.splunk_cpu, memory = var.splunk_mem, disk = var.splunk_disk
+  opensearch_nodes = {
+    for i in range(var.opensearch_count) :
+    "${var.cluster_name}-opensearch-${i + 1}" => {
+      cpus = var.opensearch_cpu, memory = var.opensearch_mem, disk = var.opensearch_disk
     }
   }
 }
@@ -42,7 +42,7 @@ module "vms" {
     local.mgmt_nodes,
     local.compute_nodes,
     local.data_nodes,
-    local.splunk_nodes,
+    local.opensearch_nodes,
   )
   image          = var.image
   cloudinit_file = local_file.cloud_init.filename

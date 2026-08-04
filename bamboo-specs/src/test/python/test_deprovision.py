@@ -132,6 +132,6 @@ def test_tolerates_already_missing_generated_files(lab):
 
 def test_removes_the_credentials_file(lab, tmp_path, monkeypatch):
     monkeypatch.setattr(deprovision.credentials.paths, "FORGELAB_HOME", tmp_path)
-    deprovision.credentials.write("lab1", {"splunk_admin_password": "hunter22"})
+    deprovision.credentials.write("lab1", {"keycloak_admin_password": "hunter22"})
     deprovision.main(["lab1"])
     assert not deprovision.credentials.path("lab1").exists()

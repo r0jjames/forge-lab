@@ -21,7 +21,7 @@ CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
 
 # Which addon owns which VM role. Keycloak owns none — it runs on the k8s
 # cluster the mgmt/compute nodes already form.
-ADDON_NODE_ROLES = {"hdfs": "data", "splunk": "splunk"}
+ADDON_NODE_ROLES = {"hdfs": "data", "opensearch": "opensearch"}
 
 
 def node_count_overrides(addons) -> list:
@@ -89,7 +89,7 @@ def main(argv):
                 "mgmt": multipass.list_vms(f"{cluster}-mgmt-"),
                 "compute": multipass.list_vms(f"{cluster}-compute-"),
                 "data": multipass.list_vms(f"{cluster}-data-"),
-                "splunk": multipass.list_vms(f"{cluster}-splunk-"),
+                "opensearch": multipass.list_vms(f"{cluster}-opensearch-"),
             },
         )
     )

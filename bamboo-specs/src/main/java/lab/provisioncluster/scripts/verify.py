@@ -170,65 +170,62 @@ def _verify_hdfs(data_ip: str, expected: int):
     print(f"hdfs roundtripped a file through {HDFS_APP_DIR}")
 
 
-SPLUNK_HOME = "/opt/splunk"
-_PEER_UP_RE = re.compile(r"Status:\s*Up\b")
+OPENSEARCH_PORT = 9200
+OPENSEARCH_INDEX = "forgelab-logs"
 
 
-def search_peers_up(text: str) -> int:
-    """Peers reporting Up in `splunk list search-server` output."""
-    return len(_PEER_UP_RE.findall(text))
-
-
-def stats_count(csv_text: str) -> int:
-    """The value under the `count` header of `splunk search ... -output csv`."""
-    rows = [row.strip() for row in csv_text.splitlines() if row.strip()]
-    if len(rows) < 2:
-        return 0
+def cluster_nodes(payload: str) -> int:
+    """`number_of_nodes` from OpenSearch's /_cluster/health, or 0."""
     try:
-        return int(rows[1].strip('"'))
+        data = json.loads(payload)
     except ValueError:
         return 0
+    if not isinstance(data, dict):
+        return 0
+    value = data.get("number_of_nodes", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
 
 
-def _verify_splunk(head_ip: str, expected_peers: int, password: str):
-    if not password:
-        proc.die("no splunk_admin_password in the cluster's credentials file")
+def cluster_status(payload: str) -> str:
+    """`status` from /_cluster/health ("green"/"yellow"/"red"), or ""."""
+    return field_from(payload, "status")
 
-    # Splunk's CLI has no file-based auth for one-shot calls, only `-auth
-    # user:pass` or the SPLUNK_USERNAME/SPLUNK_PASSWORD environment variables.
-    # `-auth` (and `env VAR=value cmd`, which puts "VAR=value" in the `env`
-    # process's own argv) both land the password in a remote process's argv,
-    # which any user on the box can read via `ps` — the mistake this plan
-    # already made once for Keycloak. Instead the password travels only over
-    # the SSH channel's stdin: the remote shell reads it off stdin into a
-    # variable that is exported solely into splunk's environment, so the
-    # secret never appears as a token in any remote process's argv.
-    def _authed(command: str) -> subprocess.CompletedProcess:
-        script = (
-            "IFS= read -r SPLUNK_PASSWORD && "
-            f'SPLUNK_USERNAME=admin SPLUNK_PASSWORD="$SPLUNK_PASSWORD" {command}'
-        )
-        return _ssh(head_ip, script, stdin=f"{password}\n")
 
-    print(f"==> verify: {expected_peers} search peers on {head_ip}")
+def doc_count(payload: str) -> int:
+    """`count` from OpenSearch's /_count, or 0."""
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    value = data.get("count", 0)
+    return value if isinstance(value, int) and not isinstance(value, bool) else 0
+
+
+def _verify_opensearch(node_ip: str, expected_nodes: int):
+    base = f"http://{node_ip}:{OPENSEARCH_PORT}"
+    print(f"==> verify: {expected_nodes}-node opensearch cluster at {base}")
     for _ in range(ATTEMPTS):
-        result = _authed(f"{SPLUNK_HOME}/bin/splunk list search-server")
-        if result.returncode == 0 and search_peers_up(result.stdout) >= expected_peers:
+        payload = _http(f"{base}/_cluster/health")
+        if (
+            cluster_nodes(payload) >= expected_nodes
+            and cluster_status(payload) in ("green", "yellow")
+        ):
             break
         time.sleep(INTERVAL_SECONDS)
     else:
-        proc.die(f"fewer than {expected_peers} search peers Up within timeout")
+        proc.die(f"opensearch cluster not healthy with {expected_nodes} nodes within timeout")
 
-    # Forwarder data is the slow signal: the peers can be Up long before any
-    # host has shipped an event.
-    query = "search index=_internal earliest=-1h | stats count"
+    # A green cluster with no data flowing into it is still a failure — prove
+    # the index is actually receiving documents, not just that the nodes joined.
     for _ in range(ATTEMPTS):
-        result = _authed(f"{SPLUNK_HOME}/bin/splunk search '{query}' -output csv")
-        if result.returncode == 0 and stats_count(result.stdout) > 0:
-            print(f"splunk searched {stats_count(result.stdout)} events across its peers")
+        count = doc_count(_http(f"{base}/{OPENSEARCH_INDEX}*/_count"))
+        if count > 0:
+            print(f"opensearch indexed {count} documents into {OPENSEARCH_INDEX}*")
             return
         time.sleep(INTERVAL_SECONDS)
-    proc.die("splunk returned no events from a distributed search within timeout")
+    proc.die(f"opensearch index '{OPENSEARCH_INDEX}*' has no documents within timeout")
 
 
 def _verify_dcos(mgmt_ip: str):
@@ -274,12 +271,11 @@ def main(argv):
         if not data_ip:
             proc.die("hdfs is enabled but the inventory has no data hosts")
         _verify_hdfs(data_ip, len(inventory.group_ips(text, "data")))
-    if "splunk" in addons:
-        head_ip = inventory.first_ip(text, "splunk")
-        if not head_ip:
-            proc.die("splunk is enabled but the inventory has no splunk hosts")
-        peers = max(len(inventory.group_ips(text, "splunk")) - 1, 0)
-        _verify_splunk(head_ip, peers, secrets_values.get("splunk_admin_password", ""))
+    if "opensearch" in addons:
+        node_ip = inventory.first_ip(text, "opensearch")
+        if not node_ip:
+            proc.die("opensearch is enabled but the inventory has no opensearch hosts")
+        _verify_opensearch(node_ip, len(inventory.group_ips(text, "opensearch")))
 
 
 if __name__ == "__main__":
