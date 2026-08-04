@@ -25,6 +25,18 @@
     home: "{{ hdfs_data_dir }}"
     create_home: false
 
+# dfs.permissions.superusergroup is set to the hdfs group (see hdfs-site.xml.j2);
+# without ubuntu in it, `hdfs dfsadmin -report` truncates the "Live datanodes"
+# section for the login user verify.py runs as. Restarting the NameNode
+# (notified below) is required for it to pick up the new group membership —
+# it caches user->group mappings at process start.
+- name: Add the login user to the hdfs group so it is an HDFS superuser
+  ansible.builtin.user:
+    name: ubuntu
+    groups: "{{ hdfs_user }}"
+    append: true
+  notify: [Restart hdfs namenode, Restart hdfs datanode]
+
 - name: Data directories
   ansible.builtin.file:
     path: "{{ item }}"

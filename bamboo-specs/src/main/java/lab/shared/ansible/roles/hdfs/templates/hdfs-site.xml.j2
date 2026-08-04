@@ -25,4 +25,12 @@
     <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
     <value>false</value>
   </property>
+  <!-- Default is "supergroup", which no OS account belongs to. Without this,
+       verify.py's `ubuntu` login is a non-superuser and `hdfs dfsadmin
+       -report` silently truncates: it gets the capacity summary but not the
+       "Live datanodes (N):" section, so live_datanodes() parses 0. -->
+  <property>
+    <name>dfs.permissions.superusergroup</name>
+    <value>{{ hdfs_user }}</value>
+  </property>
 </configuration>
