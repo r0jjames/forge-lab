@@ -18,5 +18,5 @@
 - name: Fluent Bit log shipping
   ansible.builtin.include_tasks: fluentbit.yml
   when:
-    - "'opensearch' in addons.split(',')"
+    - "'opensearch' in (addons | default('')).split(',')"
     - inventory_hostname not in groups['opensearch'] | default([])
