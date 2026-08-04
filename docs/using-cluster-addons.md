@@ -120,17 +120,20 @@ without hand-building endpoint URLs:
 curl -s http://<cluster>-mgmt-1:30080/realms/forgelab/.well-known/openid-configuration
 ```
 
-Fetch a token for `labuser` with the password grant:
+Fetch a token for `labuser` with the password grant. Keep the password out of
+the command line the same way the rest of this branch does — `ps` shows argv
+to any user on the box, so it's piped over stdin with `--data-urlencode
+password@-` instead of interpolated into a `-d` flag:
 
 ```
 PASSWORD=$(grep keycloak_app_user_password ~/.forgelab/<cluster>-credentials.yml | cut -d'"' -f2)
 
-curl -s -X POST \
+printf '%s' "$PASSWORD" | curl -s -X POST \
   http://<cluster>-mgmt-1:30080/realms/forgelab/protocol/openid-connect/token \
   -d grant_type=password \
   -d client_id=app \
   -d username=labuser \
-  -d "password=${PASSWORD}"
+  --data-urlencode password@-
 ```
 
 A successful response is a JSON blob with an `access_token`. Two things that
@@ -257,15 +260,6 @@ hostname directly in a query. The originating hostname is visible only
 inside the raw `log` text itself — rsyslog prefixes every line with it — so
 to find one node's logs you're filtering on a substring of `log`, not a
 dedicated field.
-
-### Timing quirk
-
-Expect the index to start filling at roughly install time, not at VM boot.
-Fluent Bit starts (via systemd, early in the boot sequence) well before
-OpenSearch exists as a destination; any lines it reads during that window
-are lost, not queued or retried once OpenSearch comes up. This is normal —
-don't go looking for the cluster's very first boot messages in the index,
-they were never sent.
 
 ### Useful one-liners
 

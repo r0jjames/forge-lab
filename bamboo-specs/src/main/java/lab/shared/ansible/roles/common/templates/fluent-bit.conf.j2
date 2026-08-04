@@ -16,6 +16,11 @@
     Port                 {{ common_fluentbit_opensearch_port }}
     Logstash_Format      On
     Logstash_Prefix      {{ common_fluentbit_index }}
+    # Fluent Bit starts (via systemd, early in boot) well before OpenSearch
+    # exists as a destination — site.yml installs this role minutes ahead of
+    # the opensearch role. Without this, the default Retry_Limit of 1 drops
+    # every record read during that window instead of buffering it.
+    Retry_Limit          False
     # OpenSearch 2.x+ dropped mapping types; without this the output plugin
     # still tries to send one and every bulk request is rejected.
     Suppress_Type_Name   On
