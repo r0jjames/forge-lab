@@ -35,9 +35,7 @@ def run(cluster: str, cluster_type: str, addons):
     if not inv.is_file():
         proc.die(f"no inventory for {cluster} — provision it first")
 
-    secret_values = credentials.generate(addons)
-    if secret_values:
-        credentials.write(cluster, secret_values)
+    secret_values = credentials.ensure(cluster, addons)
 
     # mkdtemp is 0700, and the vars file is opened 0600 and deleted after the
     # run: passwords must never reach argv, which is world-readable in `ps`.

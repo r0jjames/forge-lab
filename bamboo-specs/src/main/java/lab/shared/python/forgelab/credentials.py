@@ -57,6 +57,28 @@ def write(cluster: str, values: dict) -> Path:
     return creds
 
 
+def ensure(cluster: str, addons) -> dict:
+    """The cluster's secrets, minting only the ones not already on disk.
+
+    Regenerating every run would desynchronise this file from any service that
+    bakes its password in at first start — Keycloak's admin lives in a database
+    that outlives the playbook, so a fresh password locks the lab out of its own
+    cluster. Existing values always win; keys belonging to addons that are not
+    currently enabled are preserved rather than dropped.
+    """
+    existing = read(cluster)
+    missing = {
+        key: secrets.token_urlsafe(PASSWORD_BYTES)
+        for addon in addons
+        for key in SECRET_KEYS.get(addon, ())
+        if key not in existing
+    }
+    merged = {**existing, **missing}
+    if merged:
+        write(cluster, merged)
+    return merged
+
+
 def read(cluster: str) -> dict:
     """The cluster's secrets, or {} when the file is absent.
 

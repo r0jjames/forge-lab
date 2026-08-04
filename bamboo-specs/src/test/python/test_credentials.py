@@ -95,3 +95,40 @@ def test_registry_omits_the_pointer_when_there_are_no_credentials(home, monkeypa
     monkeypatch.setattr(registry.paths, "SSH_KEY", home / "id_ed25519")
     text = registry.render("lab1", "k8s", "2026-08-03T10:00:00Z", [], [])
     assert "credentials:" not in text
+
+
+def test_ensure_on_a_clean_home_generates_the_expected_keys(home):
+    values = credentials.ensure("lab1", ["keycloak"])
+    assert sorted(values) == ["keycloak_admin_password", "keycloak_app_user_password"]
+
+
+def test_ensure_called_twice_returns_identical_values(home):
+    """The regression test: a second `make addons` run must not mint new
+    passwords, or a service that bootstrapped its own password once (Keycloak)
+    is locked out by the very command meant to iterate on it."""
+    first = credentials.ensure("lab1", ["keycloak"])
+    second = credentials.ensure("lab1", ["keycloak"])
+    assert second == first
+
+
+def test_ensure_preserves_a_key_belonging_to_an_addon_not_in_the_current_list(home):
+    original = credentials.ensure("lab1", ["keycloak", "splunk"])
+    values = credentials.ensure("lab1", ["keycloak"])
+    assert values["splunk_admin_password"] == original["splunk_admin_password"]
+
+
+def test_ensure_fills_in_a_missing_key_while_leaving_an_existing_one_untouched(home):
+    credentials.write("lab1", {"keycloak_admin_password": "hunter22"})
+    values = credentials.ensure("lab1", ["keycloak"])
+    assert values["keycloak_admin_password"] == "hunter22"
+    assert "keycloak_app_user_password" in values
+
+
+def test_ensure_writes_the_file_owner_only(home):
+    credentials.ensure("lab1", ["keycloak"])
+    assert stat.S_IMODE(credentials.path("lab1").stat().st_mode) == 0o600
+
+
+def test_ensure_creates_no_file_when_there_is_nothing_to_store(home):
+    credentials.ensure("lab1", ["hdfs"])
+    assert not credentials.path("lab1").exists()
