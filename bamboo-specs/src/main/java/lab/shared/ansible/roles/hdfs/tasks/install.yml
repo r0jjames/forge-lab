@@ -41,7 +41,7 @@
 # it caches user->group mappings at process start.
 - name: Add the login user to the hdfs group so it is an HDFS superuser
   ansible.builtin.user:
-    name: ubuntu
+    name: "{{ hdfs_app_owner }}"
     groups: "{{ hdfs_user }}"
     append: true
   notify: [Restart hdfs namenode, Restart hdfs datanode]
