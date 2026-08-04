@@ -146,3 +146,60 @@ def test_assert_unique_ips_rejects_duplicates(tmp_path):
     inv.write_text("[mgmt]\na ansible_host=1.2.3.4\nb ansible_host=1.2.3.4\n")
     with pytest.raises(LabError, match=r"duplicate node IP\(s\) \[1.2.3.4\]"):
         inventory.assert_unique_ips(inv)
+
+
+def test_render_sorts_nodes_within_a_group_regardless_of_input_order():
+    """multipass hands nodes back in an arbitrary order; groups['data'][0]
+    (e.g. where the NameNode goes) must be a deterministic function of the
+    name, not of backend enumeration order."""
+    scrambled = {
+        "mgmt": MGMT,
+        "compute": COMPUTE,
+        "data": [
+            Node("lab1-data-3", ["192.168.252.23"]),
+            Node("lab1-data-1", ["192.168.252.21"]),
+            Node("lab1-data-2", ["192.168.252.22"]),
+        ],
+        "splunk": [
+            Node("lab1-splunk-2", ["192.168.252.32"]),
+            Node("lab1-splunk-1", ["192.168.252.31"]),
+        ],
+    }
+    text = inventory.render("lab1", scrambled)
+    assert inventory.group_ips(text, "data") == [
+        "192.168.252.21",
+        "192.168.252.22",
+        "192.168.252.23",
+    ]
+    assert inventory.group_ips(text, "splunk") == [
+        "192.168.252.31",
+        "192.168.252.32",
+    ]
+
+
+def test_render_natural_sorts_double_digit_node_numbers():
+    """Plain string sort would put '-data-10' before '-data-2'."""
+    nodes = {
+        "mgmt": MGMT,
+        "compute": COMPUTE,
+        "data": [
+            Node("lab1-data-10", ["192.168.252.30"]),
+            Node("lab1-data-2", ["192.168.252.22"]),
+            Node("lab1-data-1", ["192.168.252.21"]),
+        ],
+        "splunk": [],
+    }
+    text = inventory.render("lab1", nodes)
+    assert inventory.parse_hosts(text)[3:6] == [
+        ("lab1-data-1", "192.168.252.21"),
+        ("lab1-data-2", "192.168.252.22"),
+        ("lab1-data-10", "192.168.252.30"),
+    ]
+
+
+def test_render_preserves_the_callers_group_order():
+    """Sorting is within a group only; group order itself is untouched — it
+    is the caller's dict order (mgmt, compute, data, splunk in provision.py)."""
+    text = inventory.render("lab1", loaded())
+    headers = [line for line in text.splitlines() if line.startswith("[")]
+    assert headers == ["[mgmt]", "[compute]", "[data]", "[splunk]", "[k8s_nodes:children]", "[all:vars]"]
