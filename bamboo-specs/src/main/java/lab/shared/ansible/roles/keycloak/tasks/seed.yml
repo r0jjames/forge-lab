@@ -74,6 +74,7 @@
   failed_when:
     - keycloak_client_create.rc != 0
     - "'already exists' not in keycloak_client_create.stderr"
+    - "'Conflict detected' not in keycloak_client_create.stderr"
 
 # Keycloak 24+'s declarative user profile requires email/firstName/lastName
 # by default. A user created with only a username is "not fully set up" and
@@ -111,7 +112,7 @@
   failed_when:
     - keycloak_user_create.rc != 0
     - "'already exists' not in keycloak_user_create.stderr"
-    - "'exists with same email' not in keycloak_user_create.stderr"
+    - "'exists with same' not in keycloak_user_create.stderr"
 
 - name: Set the test user's password
   ansible.builtin.command:

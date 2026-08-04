@@ -10,7 +10,6 @@
     src: keycloak.yml.j2
     dest: "{{ keycloak_manifest }}"
     mode: "0600"
-  no_log: true
 
 - name: Apply the Keycloak manifest
   ansible.builtin.command: >-
