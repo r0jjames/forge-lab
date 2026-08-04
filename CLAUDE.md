@@ -1,7 +1,9 @@
 # forge-lab
 
 Personal CI/CD lab: Bamboo on Rancher Desktop K8s + pipelines that provision
-Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-forge-lab-design.md
+Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-forge-lab-design.md.
+For how to actually use a provisioned cluster's addons (Keycloak, HDFS,
+OpenSearch/Dashboards) and k9s day-to-day, see docs/using-cluster-addons.md.
 
 ## Commands
 

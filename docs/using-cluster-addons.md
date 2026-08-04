@@ -1,0 +1,389 @@
+# Using the cluster addons
+
+This is the day-to-day guide for the three optional services a provisioned
+cluster can carry — Keycloak, HDFS, and OpenSearch/Dashboards — plus k9s,
+which isn't an addon but which you'll reach for constantly alongside them.
+It assumes a cluster is already up. For how provisioning itself works, see
+`docs/superpowers/specs/2026-07-23-forge-lab-design.md`; for how the addons
+were built, see `docs/superpowers/specs/2026-08-03-cluster-addons-design.md`.
+
+Everywhere below, `<cluster>` is the cluster name (`lab1` in the examples)
+and `<cluster>-mgmt-1`, `<cluster>-data-1`, `<cluster>-opensearch-1` are SSH
+host aliases, not literal IPs — see "Where things live" for how those
+resolve.
+
+## 1. Enabling addons
+
+Which addons a cluster gets is controlled by the `addons` key in its tfvars
+file, `bamboo-specs/src/main/java/lab/shared/clusters/<cluster>.tfvars`
+(falling back to `defaults.tfvars` if the cluster has no file of its own).
+`lab1.tfvars` currently has:
+
+```
+addons = "keycloak,hdfs,opensearch"
+```
+
+That's a comma-separated list; any subset works, in any order.
+
+You can override the tfvars value for a single run without editing the file:
+
+- From the shell: `make provision CLUSTER=lab1 ADDONS=hdfs` (or
+  `ADDONS=keycloak,opensearch`, etc.)
+- From Bamboo: set the `addons` plan variable on a manual run of the
+  Provision plan
+
+An **empty** override (`ADDONS=` with nothing after the `=`, or the Bamboo
+variable left blank but explicitly set) disables every addon, even if the
+tfvars file lists some. Leaving the override unset entirely — the normal
+case — falls through to whatever the tfvars file says.
+
+To iterate on an addon's Ansible role without tearing down and rebuilding
+the whole cluster, re-run just the install stage against the existing
+inventory:
+
+```
+make addons CLUSTER=lab1 ADDONS=hdfs
+```
+
+This re-applies `site.yml` for the given addon set only; it does not touch
+Terraform or re-provision VMs.
+
+**k9s is not an addon.** It ships on every Kubernetes cluster's mgmt node
+regardless of the `addons` list — there's no flag that turns it off.
+
+One consequence worth knowing before you reach for `ADDONS=`: disabling
+`hdfs` or `opensearch` doesn't just skip their Ansible role, it zeroes the
+Terraform count for the VM role that addon owns (`data` for hdfs,
+`opensearch` for opensearch). A cluster provisioned with `ADDONS=keycloak`
+builds no `data` or `opensearch` VMs at all — not empty ones, none. Keycloak
+owns no VM role of its own; it runs on the k8s cluster the mgmt/compute
+nodes already form.
+
+## 2. Where things live
+
+Node names are stable across provisions because the inventory is
+natural-sorted (`data-2` always sorts before `data-10`), so you can rely on
+these regardless of which run produced the cluster:
+
+| Node | What's there |
+| --- | --- |
+| `<cluster>-mgmt-1` | Kubernetes control plane, k9s, Keycloak (via a NodePort on the k8s cluster) |
+| `<cluster>-data-1` | HDFS NameNode (always node 1; nodes 2+ are DataNode-only) |
+| `<cluster>-opensearch-1` | OpenSearch node + Dashboards (always node 1; nodes 2 and 3 run OpenSearch but no UI) |
+
+To get the actual IPs for a cluster, either read
+`cluster_registered/<cluster>_cluster_info.yml` (written by provision as its
+last step — it lists every node, its role, and its address) or just SSH by
+name. Provisioning writes `~/.forgelab/ssh_config.d/<cluster>.conf`
+(included from `~/.ssh/config`), so `ssh lab1-mgmt-1`, `ssh lab1-data-1`,
+`ssh lab1-opensearch-1`, etc. all work out of the box as the `ubuntu` user
+with the lab's key — no need to look up an IP first. If you do want the raw
+address for a `curl` from your own machine, `ssh <cluster>-mgmt-1 "hostname
+-I"` or the info file both have it.
+
+## 3. k9s
+
+```
+ssh <cluster>-mgmt-1
+k9s
+```
+
+k9s reads `~/.kube/config`, which is only populated on the mgmt node — the
+node that runs `kubectl` against the cluster it's part of. It is **not**
+installed on compute nodes; they have no kubeconfig and nothing to point k9s
+at, so don't go looking for it there.
+
+## 4. Keycloak
+
+Console: `http://<cluster>-mgmt-1:30080` (that's the NodePort — Keycloak
+itself runs as pods on the k8s cluster, not as a systemd unit on any single
+VM).
+
+Log in as `admin`. The password is `keycloak_admin_password` in
+`~/.forgelab/<cluster>-credentials.yml`, which is written on your own
+machine (or wherever `make addons`/`make provision` ran), mode `0600`, and
+**never committed to the repo**:
+
+```
+grep keycloak_admin_password ~/.forgelab/<cluster>-credentials.yml
+```
+
+The install seeds one realm, `forgelab`, with a public OIDC client `app`
+(direct access grants enabled — that's what lets you do a password grant
+instead of a browser redirect) and one test user, `labuser`, whose password
+is `keycloak_app_user_password` in the same credentials file.
+
+Discovery document, useful for pointing any OIDC library at the realm
+without hand-building endpoint URLs:
+
+```
+curl -s http://<cluster>-mgmt-1:30080/realms/forgelab/.well-known/openid-configuration
+```
+
+Fetch a token for `labuser` with the password grant:
+
+```
+PASSWORD=$(grep keycloak_app_user_password ~/.forgelab/<cluster>-credentials.yml | cut -d'"' -f2)
+
+curl -s -X POST \
+  http://<cluster>-mgmt-1:30080/realms/forgelab/protocol/openid-connect/token \
+  -d grant_type=password \
+  -d client_id=app \
+  -d username=labuser \
+  -d "password=${PASSWORD}"
+```
+
+A successful response is a JSON blob with an `access_token`. Two things that
+will bite you if you're setting this up from scratch for a different client
+or user rather than using the seeded ones:
+
+- The password grant only works because the `app` client has
+  `directAccessGrantsEnabled=true`. Keycloak's default for a new client is
+  `false`, and the grant fails silently different ways depending on client
+  type — check this first if a token request 400s.
+- Keycloak 24 and later require a user to have `email`, `firstName`, and
+  `lastName` set (the declarative user profile), or the password grant fails
+  with `invalid_grant` / "Account is not fully set up" even though the user
+  looks perfectly normal in the admin console. The `labuser` seed sets all
+  three for exactly this reason — if you add your own users by hand, do the
+  same.
+
+## 5. HDFS
+
+```
+ssh <cluster>-data-1
+hdfs dfs -ls /
+```
+
+The NameNode UI is at `http://<cluster>-data-1:9870`. `fs.defaultFS` is
+`hdfs://<cluster>-data-1:8020` — that's the URI any client (including
+`hdfs dfs` run from a different node) needs to talk to this filesystem.
+
+`/user/app` already exists and is owned by `ubuntu`, ready for an
+application to use without any setup:
+
+```
+# from data-1, or any node with the hdfs client and this fs.defaultFS configured
+echo "hello" | hdfs dfs -put -f - /user/app/hello.txt
+hdfs dfs -cat /user/app/hello.txt
+hdfs dfs -get /user/app/hello.txt ./hello.txt
+hdfs dfs -ls /user/app
+```
+
+One permissions detail worth knowing before you go looking for why
+`dfsadmin -report` behaves the way it does: the `ubuntu` login user is a
+member of the `hdfs` group, and `dfs.permissions.superusergroup` is set to
+`hdfs`. That's why running `hdfs dfsadmin -report` as `ubuntu` shows the
+full DataNode listing (`Live datanodes (N):` with per-node capacity detail)
+rather than just the cluster-wide capacity summary — HDFS shows that detail
+only to a superuser, and group membership is how superuser status is
+granted here. Without it you'd still get a report, just a much shorter one.
+
+## 6. OpenSearch and Dashboards
+
+OpenSearch replaced Splunk in this lab because Splunk Enterprise has no
+Linux arm64 build, which made it a non-starter on Apple Silicon Multipass
+VMs.
+
+- API: `http://<cluster>-opensearch-1:9200`
+- Dashboards: `http://<cluster>-opensearch-1:5601`
+- Transport (node-to-node, not for clients): port 9300
+
+**There is no password.** The security plugin is disabled outright
+(`plugins.security.disabled: true` in `opensearch.yml`) rather than
+configured with credentials, because this is a disposable local lab on a
+host-only network — there's nothing here worth protecting with auth, and
+every extra moving part is one more thing to debug. Nothing for this addon
+is written to `~/.forgelab/<cluster>-credentials.yml`; if you go looking
+there for an OpenSearch password, you will not find one, because none is
+ever generated. Both the API and Dashboards are open HTTP.
+
+Fluent Bit ships logs into a daily index, `forgelab-logs-YYYY.MM.DD`, from
+every mgmt, compute, and data node (the opensearch nodes themselves are
+deliberately excluded — see below). One index per day, all matching
+`forgelab-logs*`.
+
+### First-run Dashboards step
+
+Nothing pre-creates an index pattern in Dashboards, so the first time you
+open it on a fresh cluster it will look completely empty even though the
+cluster is healthy and logs are flowing. You have to create the pattern
+yourself, once, per cluster:
+
+1. Open `http://<cluster>-opensearch-1:5601`.
+2. Open the menu (the ☰ icon, top left) and go to **Dashboards Management**
+   → **Index Patterns**.
+3. Click **Create index pattern**, enter `forgelab-logs*`, and continue.
+4. Pick `@timestamp` as the time field.
+5. Click **Create index pattern**.
+
+After that, **Discover** will show documents. If Discover still looks
+empty, it's very likely the index pattern step above, not a real problem —
+check `_cat/indices` (below) before assuming something's broken.
+
+### OpenSearch's own logs aren't in OpenSearch
+
+The three opensearch nodes ship no logs of their own by design (Fluent Bit
+only runs on mgmt/compute/data), so if OpenSearch or Dashboards itself is
+misbehaving, you will not find anything useful searching `forgelab-logs*` —
+there's nothing there about the OpenSearch service itself. Its logs are
+plain files on the node:
+
+```
+ssh <cluster>-opensearch-1 "ls /var/lib/opensearch/logs/"
+ssh <cluster>-opensearch-1 "tail -f /var/lib/opensearch/logs/forgelab.log"
+```
+
+(`forgelab` there is the cluster name configured as `opensearch_cluster_name`,
+which is what OpenSearch prefixes its own log filenames with — not the
+lab cluster name `lab1`.)
+
+### Record shape
+
+Every document has exactly three fields:
+
+| Field | Content |
+| --- | --- |
+| `@timestamp` | when Fluent Bit read the line |
+| `log` | the raw line, unparsed |
+| `source_file` | which file it came from (`/var/log/syslog` or `/var/log/auth.log`) |
+
+There's no syslog parsing, so there's no structured `severity` or `program`
+field to filter on — `source_file` is the only structured field besides the
+timestamp. Fluent Bit tags each record `forgelab.<hostname>` internally for
+its own routing, but that tag is **not** stored as a document field (the
+index mapping has only the three fields above), so you can't filter by
+hostname directly in a query. The originating hostname is visible only
+inside the raw `log` text itself — rsyslog prefixes every line with it — so
+to find one node's logs you're filtering on a substring of `log`, not a
+dedicated field.
+
+### Timing quirk
+
+Expect the index to start filling at roughly install time, not at VM boot.
+Fluent Bit starts (via systemd, early in the boot sequence) well before
+OpenSearch exists as a destination; any lines it reads during that window
+are lost, not queued or retried once OpenSearch comes up. This is normal —
+don't go looking for the cluster's very first boot messages in the index,
+they were never sent.
+
+### Useful one-liners
+
+```
+curl -s "http://<cluster>-opensearch-1:9200/_cluster/health?pretty"
+curl -s "http://<cluster>-opensearch-1:9200/_cat/indices/forgelab-logs*?v"
+curl -s "http://<cluster>-opensearch-1:9200/forgelab-logs*/_search?q=source_file:%2Fvar%2Flog%2Fauth.log&size=5&pretty"
+```
+
+## 7. Using these from an application
+
+These three addons are independent services that happen to share a cluster
+— nothing here wires Keycloak, HDFS, and OpenSearch to each other, or to
+whatever you deploy. Wiring an application to them is on the application.
+For something like `worship-lineup` (or any app that needs auth, storage,
+and logging), the shape is:
+
+- **OIDC**: point the app's OIDC client config at issuer
+  `http://<cluster>-mgmt-1:30080/realms/forgelab`, client id `app`. Reuse
+  the seeded client if a public client with direct-grant/browser-redirect
+  is enough; create a new one in the realm if the app needs its own client
+  id or a confidential client with a secret.
+- **Storage**: write application data under
+  `hdfs://<cluster>-data-1:8020/user/app` (already there, already owned by
+  `ubuntu`), or create a new path under `/user` for a dedicated identity.
+- **Logging**: ship application logs to OpenSearch at
+  `http://<cluster>-opensearch-1:9200` directly — an app doing this itself
+  isn't limited to the `forgelab-logs*` shape or Fluent Bit's syslog-only
+  scope; it can define its own index and mapping.
+
+## 8. Troubleshooting
+
+### Lost credentials file
+
+This is the one that will cost you the most time if you don't know it in
+advance, so it gets its own section.
+
+`~/.forgelab/<cluster>-credentials.yml` holds the Keycloak admin and
+`labuser` passwords, generated once and meant to persist for the life of
+the cluster. If that file is deleted (accidentally, or because you're
+running from a different machine/home directory than the one that
+provisioned the cluster) and you then run `make addons` — or anything else
+that re-runs the install stage — `credentials.ensure()` sees no existing
+values and mints **brand-new** passwords. Those get written into Keycloak's
+Kubernetes Secret, but the already-running Keycloak deployment (and its
+Postgres backing store, which reuses the same password) was bootstrapped
+with the old ones and doesn't pick up the new Secret value on its own.
+Every subsequent Keycloak operation — the Ansible seed tasks, your own
+login, `verify.py` — starts failing, and because the task that handles this
+value is marked `no_log: true` (deliberately, so a password never lands in
+a build log), the Ansible failure output that would normally tell you
+"authentication failed" is suppressed. You just see a generic task failure
+with no explanation.
+
+If you hit this, the fix is to stop treating the credentials file as
+recoverable and just rebuild Keycloak's install from nothing:
+
+```
+ssh <cluster>-mgmt-1 "kubectl delete namespace keycloak"
+make addons CLUSTER=<cluster> ADDONS=keycloak
+```
+
+Deleting the namespace removes the Deployment, the Secret, and the
+Postgres PVC together, so the next `make addons` run starts Keycloak fresh
+against whatever password is (or gets minted) in the credentials file, with
+no stale state left to disagree with it.
+
+### OpenSearch / Dashboards restart order
+
+Dashboards' systemd unit declares `Requires=opensearch.service`, so if you
+need to restart both, restart OpenSearch first:
+
+```
+ssh <cluster>-opensearch-1 "sudo systemctl restart opensearch"
+ssh <cluster>-opensearch-1 "sudo systemctl restart opensearch-dashboards"
+```
+
+Restarting Dashboards alone is fine and doesn't touch OpenSearch.
+
+### Forcing Fluent Bit to re-tail
+
+Fluent Bit keeps a position database so it doesn't re-read lines it's
+already shipped. To force it to start over — useful if you suspect it got
+stuck, or you want to re-ingest from the beginning of the current log
+files — stop it, delete that database, and start it again:
+
+```
+ssh <cluster>-mgmt-1 "sudo systemctl stop fluent-bit && sudo rm -f /var/lib/fluent-bit/forgelab.db* && sudo systemctl start fluent-bit"
+```
+
+That path is confirmed live on a running cluster (Fluent Bit's SQLite
+position store shows up there as `forgelab.db`, `forgelab.db-shm`, and
+`forgelab.db-wal` — remove all three, the glob above catches them). Do this
+on whichever node's Fluent Bit you're trying to reset — mgmt, compute, or
+data — the same three files exist on each.
+
+### `make provision` failing on an empty OpenSearch index
+
+If a provision run dies at the verify stage with something like
+"opensearch index 'forgelab-logs*' has no documents within timeout," that's
+the verifier working as intended, not a flake. `verify.py` checks two
+separate things for the opensearch addon: that the cluster reports
+green/yellow with the expected node count, and separately that
+`forgelab-logs*` actually has a non-zero document count — a healthy,
+empty cluster is not considered a pass, because it usually means Fluent
+Bit never started or never found anything to tail. Don't just retry the
+provision; check whether Fluent Bit is running and whether `/var/log/syslog`
+exists and is being written to on the non-opensearch nodes.
+
+### Where the checks themselves live
+
+All of the addon verification logic — the Keycloak token check, the HDFS
+DataNode/roundtrip check, the OpenSearch health/document-count check — is
+in one file:
+
+```
+bamboo-specs/src/main/java/lab/provisioncluster/scripts/verify.py
+```
+
+If a `make provision` run fails in a way this guide doesn't explain,
+that script is the first place to look at what's actually being asserted.
