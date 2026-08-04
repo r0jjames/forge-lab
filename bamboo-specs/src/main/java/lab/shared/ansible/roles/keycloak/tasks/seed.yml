@@ -1,7 +1,9 @@
 ---
-# kcadm.sh runs inside the pod so the admin password never reaches this VM's
-# process table. `|| true`-style idempotency is avoided: creating an existing
-# realm exits non-zero with a message we match on instead.
+# kcadm.sh reads the admin password from the pod's own KC_BOOTSTRAP_ADMIN_PASSWORD
+# env var (set from the keycloak-secrets Secret — see templates/keycloak.yml.j2)
+# rather than from an argv passed in over `kubectl exec`, so it never reaches
+# this VM's process table. `|| true`-style idempotency is avoided: creating an
+# existing realm exits non-zero with a message we match on instead.
 - name: Log kcadm in
   ansible.builtin.command:
     argv:
@@ -12,15 +14,13 @@
       - exec
       - deploy/keycloak
       - --
-      - /opt/keycloak/bin/kcadm.sh
-      - config
-      - credentials
-      - --server=http://localhost:8080
-      - --realm=master
-      - --user=admin
-      - "--password={{ keycloak_admin_password }}"
+      - sh
+      - -c
+      - >-
+        /opt/keycloak/bin/kcadm.sh config credentials
+        --server=http://localhost:8080 --realm=master --user=admin
+        --password="$KC_BOOTSTRAP_ADMIN_PASSWORD"
   changed_when: false
-  no_log: true
 
 - name: Create the lab realm
   ansible.builtin.command:
@@ -121,15 +121,16 @@
       - -n
       - "{{ keycloak_namespace }}"
       - exec
+      - -i
       - deploy/keycloak
       - --
-      - /opt/keycloak/bin/kcadm.sh
-      - set-password
-      - -r
-      - "{{ keycloak_realm }}"
-      - --username
-      - "{{ keycloak_user }}"
-      - --new-password
-      - "{{ keycloak_app_user_password }}"
+      - sh
+      - -c
+      - >-
+        read -r p;
+        /opt/keycloak/bin/kcadm.sh set-password -r {{ keycloak_realm }}
+        --username {{ keycloak_user }} --new-password "$p"
+    stdin: "{{ keycloak_app_user_password }}"
+    stdin_add_newline: true
   changed_when: true
   no_log: true

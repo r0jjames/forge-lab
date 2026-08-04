@@ -89,6 +89,27 @@ def test_the_variables_file_is_owner_only_while_it_exists(lab, monkeypatch):
     assert seen["payload"]["splunk_admin_password"]
 
 
+def test_run_does_not_regenerate_passwords_on_a_second_run(lab, monkeypatch):
+    """The regression: install.run's call site must reuse credentials.ensure()'s
+    already-persisted passwords across runs. A revert of that call site to
+    credentials.generate() + credentials.write() mints a fresh password every
+    run, locking the lab out of a service (Keycloak) whose own password is
+    baked in at first start — and still passes every other test in this file,
+    because they don't call run() twice and compare."""
+    seen = []
+
+    def capture(*args, **kwargs):
+        varsfile = Path(next(str(a)[1:] for a in args if str(a).startswith("@")))
+        seen.append(json.loads(varsfile.read_text()))
+
+    monkeypatch.setattr(install.proc, "run", capture)
+    install.run("lab1", "k8s", ["keycloak"])
+    install.run("lab1", "k8s", ["keycloak"])
+
+    assert seen[0]["keycloak_admin_password"] == seen[1]["keycloak_admin_password"]
+    assert seen[0]["keycloak_app_user_password"] == seen[1]["keycloak_app_user_password"]
+
+
 def test_run_returns_the_component_report_path(lab):
     report = install.run("lab1", "k8s", [])
     assert report.name == "components.json"
