@@ -68,6 +68,20 @@ def parse_addons(text: str) -> list:
     return [name for name in (part.strip() for part in raw.split(",")) if name]
 
 
+def resolve_cluster_type(override: str, tfvars_text: str, source: str) -> str:
+    """The cluster's type. The plan variable wins over the tfvars file."""
+    if override:
+        cluster_type, source = override, "the TYPE override"
+    else:
+        cluster_type = parse_cluster_type(tfvars_text)
+    if cluster_type not in CLUSTER_TYPES:
+        die(
+            f"cluster_type must be k8s or dcos "
+            f"(got '{cluster_type}' from {source})"
+        )
+    return cluster_type
+
+
 def resolve_addons(override: str, tfvars_text: str, source: str) -> list:
     """The cluster's addon list. The plan variable wins over the tfvars file."""
     if override.strip():

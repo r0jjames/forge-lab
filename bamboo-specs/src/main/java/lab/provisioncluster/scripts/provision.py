@@ -12,7 +12,7 @@ from forgelab import (  # noqa: E402
     credentials, inventory, multipass, paths, proc, registry, sshconf, terraform,
 )
 from forgelab import tfvars as tfvars_mod  # noqa: E402
-from forgelab.tfvars import ADDONS, CLUSTER_TYPES, resolve_addons  # noqa: E402
+from forgelab.tfvars import ADDONS, resolve_addons  # noqa: E402
 
 import install  # noqa: E402
 
@@ -53,16 +53,9 @@ def main(argv):
         proc.die(f"VMs with prefix '{cluster}-' already exist; deprovision first")
 
     tfvars = tfvars_mod.resolve(cluster)
-    if type_override:
-        cluster_type, type_source = type_override, "the TYPE override"
-    else:
-        cluster_type = tfvars_mod.parse_cluster_type(tfvars.read_text())
-        type_source = str(tfvars)
-    if cluster_type not in CLUSTER_TYPES:
-        proc.die(
-            f"cluster_type must be k8s or dcos "
-            f"(got '{cluster_type}' from {type_source})"
-        )
+    cluster_type = tfvars_mod.resolve_cluster_type(
+        type_override, tfvars.read_text(), str(tfvars)
+    )
     addons = resolve_addons(addons_override, tfvars.read_text(), str(tfvars))
     print(
         f"==> provisioning '{cluster}' type={cluster_type} "

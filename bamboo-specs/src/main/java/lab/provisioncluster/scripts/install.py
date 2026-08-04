@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"
 
 from forgelab import credentials, paths, proc  # noqa: E402
 from forgelab import tfvars as tfvars_mod  # noqa: E402
-from forgelab.tfvars import ADDONS, CLUSTER_TYPES, resolve_addons  # noqa: E402,F401
+from forgelab.tfvars import resolve_addons  # noqa: E402
 
 
 def extra_vars(cluster_type: str, addons, report, secret_values: dict) -> dict:
@@ -67,16 +67,7 @@ def main(argv):
     text = tfvars_path.read_text()
 
     type_override = argv[1] if len(argv) > 1 else ""
-    if type_override:
-        cluster_type, type_source = type_override, "the TYPE override"
-    else:
-        cluster_type = tfvars_mod.parse_cluster_type(text)
-        type_source = str(tfvars_path)
-    if cluster_type not in CLUSTER_TYPES:
-        proc.die(
-            f"cluster_type must be k8s or dcos "
-            f"(got '{cluster_type}' from {type_source})"
-        )
+    cluster_type = tfvars_mod.resolve_cluster_type(type_override, text, str(tfvars_path))
 
     addons_override = argv[2] if len(argv) > 2 else ""
     addons = resolve_addons(addons_override, text, str(tfvars_path))
