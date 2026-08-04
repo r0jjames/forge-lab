@@ -3259,3 +3259,42 @@ Both were found while planning and are called out in place; neither changes the 
 
 1. **Kernel preparation stays in `roles/common`, gated on `k8s_nodes` membership**, rather than moving into the `k8s` role (Task 6). DC/OS needs the same preparation, and moving it would break `cluster_type=dcos`. The outcome is identical: data and splunk VMs are untouched.
 2. **Keycloak runs `start --http-enabled=true --hostname-strict=false`**, not `start --optimized` (Task 9). `--optimized` needs a prior `kc.sh build` in a custom image, and `start` refuses plain HTTP without hostname configuration. The stock image with those two flags serves the same thing behind a NodePort with no image build.
+
+---
+
+## Revision, 2026-08-04: the splunk addon becomes opensearch
+
+**Why.** Task 13's Step 1 hard gate resolved the Splunk download URLs and found that
+Splunk Enterprise has **no Linux arm64 build at any version** — Splunk supports ARM
+for the Universal Forwarder only. These Multipass VMs are arm64 (Apple Silicon) and
+Multipass offers no x86_64 option there. Verified: UF arm64 → 200, Enterprise arm64
+`.deb`/`.tgz` → 404 (10.4.2 and 9.3.2), Enterprise amd64 → 200 as a control.
+
+The gate did its job — it fired before any role code was written.
+
+**Decision (human).** Replace the addon with an ARM-native log stack that delivers the
+same capability: an indexer tier, a search API, a dashboards UI, and log shipping from
+every other VM. OpenSearch has real arm64 builds (3.4.0 and 2.18.0 both confirmed), as
+does Fluent Bit.
+
+**What changes.** The addon is renamed `splunk` → `opensearch` throughout: the `ADDONS`
+tuple, `ADDON_NODE_ROLES`, the tfvars sizing keys, the Terraform locals and variables,
+the inventory group, the `site.yml` play, the role directory, and `verify.py`'s branch
+and parsers. Task 12's `search_peers_up` / `stats_count` are superseded by
+`cluster_nodes` / `doc_count`, which read OpenSearch's JSON API.
+
+**What gets simpler.** OpenSearch exposes an HTTP API, so verification reuses the
+existing `_http` helper rather than SSH — and with the security plugin disabled (normal
+for a local lab) there is no admin password at all. That removes the `opensearch` entry
+from `SECRET_KEYS`, and with it the whole class of argv-leak and
+credential-desynchronisation problems that cost three fix rounds on Keycloak and one on
+Splunk's verifier. Keycloak still exercises the credentials path.
+
+**Topology is unchanged:** three VMs. `opensearch-1` runs an OpenSearch node plus
+Dashboards; `opensearch-2` and `opensearch-3` are additional cluster nodes. Fluent Bit
+runs on every non-opensearch VM and ships `/var/log` into the cluster.
+
+**Verification contract:** `GET /_cluster/health` must report `number_of_nodes == 3` and
+a status of `green` or `yellow`, AND a Fluent-Bit-populated index must return a document
+count greater than zero. Both gates, as before — a healthy cluster with no data flowing
+does not pass.
