@@ -1,0 +1,28 @@
+<?xml version="1.0"?>
+<configuration>
+  <property>
+    <name>dfs.replication</name>
+    <value>{{ hdfs_replication }}</value>
+  </property>
+  <property>
+    <name>dfs.namenode.name.dir</name>
+    <value>file://{{ hdfs_data_dir }}/name</value>
+  </property>
+  <property>
+    <name>dfs.datanode.data.dir</name>
+    <value>file://{{ hdfs_data_dir }}/data</value>
+  </property>
+  <property>
+    <name>dfs.namenode.rpc-bind-host</name>
+    <value>0.0.0.0</value>
+  </property>
+  <property>
+    <name>dfs.namenode.http-address</name>
+    <value>0.0.0.0:{{ hdfs_ui_port }}</value>
+  </property>
+  <!-- Lab clusters have no DNS; datanodes register by address. -->
+  <property>
+    <name>dfs.namenode.datanode.registration.ip-hostname-check</name>
+    <value>false</value>
+  </property>
+</configuration>

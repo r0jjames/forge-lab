@@ -1,0 +1,44 @@
+---
+# `creates:` is load-bearing — a second format wipes the filesystem.
+- name: Format the NameNode
+  ansible.builtin.command: "{{ hdfs_home }}/bin/hdfs namenode -format -nonInteractive"
+  args:
+    creates: "{{ hdfs_data_dir }}/name/current/VERSION"
+  become: true
+  become_user: "{{ hdfs_user }}"
+  environment:
+    JAVA_HOME: "{{ hdfs_java_home }}"
+    HADOOP_CONF_DIR: "{{ hdfs_home }}/etc/hadoop"
+
+- name: Start the NameNode
+  ansible.builtin.systemd:
+    name: hdfs-namenode
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for the NameNode RPC port
+  ansible.builtin.wait_for:
+    port: "{{ hdfs_namenode_port }}"
+    timeout: 120
+
+- name: Create the application directory
+  ansible.builtin.command: >-
+    {{ hdfs_home }}/bin/hdfs dfs -mkdir -p {{ hdfs_app_dir }}
+  become: true
+  become_user: "{{ hdfs_user }}"
+  environment:
+    JAVA_HOME: "{{ hdfs_java_home }}"
+    HADOOP_CONF_DIR: "{{ hdfs_home }}/etc/hadoop"
+  register: hdfs_mkdir
+  changed_when: hdfs_mkdir.rc == 0
+
+- name: Hand the application directory to the login user
+  ansible.builtin.command: >-
+    {{ hdfs_home }}/bin/hdfs dfs -chown -R {{ hdfs_app_owner }} {{ hdfs_app_dir }}
+  become: true
+  become_user: "{{ hdfs_user }}"
+  environment:
+    JAVA_HOME: "{{ hdfs_java_home }}"
+    HADOOP_CONF_DIR: "{{ hdfs_home }}/etc/hadoop"
+  changed_when: true

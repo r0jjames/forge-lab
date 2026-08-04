@@ -1,2 +1,22 @@
 ---
-# Filled in by the hdfs task of the cluster-addons plan.
+- name: Install Hadoop on every data node
+  ansible.builtin.import_tasks: install.yml
+
+- name: Bring up the NameNode
+  ansible.builtin.import_tasks: namenode.yml
+  when: inventory_hostname == groups['data'][0]
+
+- name: Start the DataNode
+  ansible.builtin.systemd:
+    name: hdfs-datanode
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Report installed components  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    forgelab_components: >-
+      {{ forgelab_components | default([]) + [{'name': 'hdfs',
+      'version': hdfs_version,
+      'namenode': 'hdfs://' ~ hostvars[groups['data'][0]].ansible_host ~ ':' ~ hdfs_namenode_port,
+      'ui': 'http://' ~ hostvars[groups['data'][0]].ansible_host ~ ':' ~ hdfs_ui_port}] }}

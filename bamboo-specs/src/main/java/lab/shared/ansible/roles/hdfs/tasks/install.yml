@@ -1,0 +1,84 @@
+---
+- name: Install a JRE
+  ansible.builtin.apt:
+    name: openjdk-17-jre-headless
+    state: present
+    update_cache: true
+
+- name: Locate JAVA_HOME
+  ansible.builtin.shell: |
+    set -eo pipefail
+    dirname "$(dirname "$(readlink -f "$(command -v java)")")"
+  args: {executable: /bin/bash}
+  register: hdfs_java
+  changed_when: false
+
+- name: Remember JAVA_HOME
+  ansible.builtin.set_fact:
+    hdfs_java_home: "{{ hdfs_java.stdout }}"
+
+- name: Service account
+  ansible.builtin.user:
+    name: "{{ hdfs_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ hdfs_data_dir }}"
+    create_home: false
+
+- name: Data directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ hdfs_user }}"
+    group: "{{ hdfs_user }}"
+    mode: "0755"
+  loop:
+    - "{{ hdfs_data_dir }}"
+    - "{{ hdfs_data_dir }}/name"
+    - "{{ hdfs_data_dir }}/data"
+    - "{{ hdfs_data_dir }}/tmp"
+    - "{{ hdfs_data_dir }}/pid"
+    - "{{ hdfs_home }}"
+
+- name: Download and unpack Hadoop
+  ansible.builtin.unarchive:
+    src: "{{ hdfs_mirror }}/hadoop-{{ hdfs_version }}/hadoop-{{ hdfs_version }}.tar.gz"
+    dest: "{{ hdfs_home }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: "{{ hdfs_user }}"
+    group: "{{ hdfs_user }}"
+    creates: "{{ hdfs_home }}/bin/hdfs"
+
+- name: Configuration
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ hdfs_home }}/etc/hadoop/{{ item }}"
+    owner: "{{ hdfs_user }}"
+    group: "{{ hdfs_user }}"
+    mode: "0644"
+  loop: [core-site.xml, hdfs-site.xml, hadoop-env.sh]
+  notify: [Restart hdfs namenode, Restart hdfs datanode]
+
+# verify.py logs in as ubuntu and runs `hdfs dfs`; without this it is not on PATH.
+- name: Hadoop on every user's PATH
+  ansible.builtin.template:
+    src: hadoop-env.sh.j2
+    dest: /etc/profile.d/hadoop.sh
+    mode: "0644"
+
+# /etc/profile.d is only sourced for login shells; a bare, non-interactive
+# `ssh host cmd` (verify.py's invocation) never reads it. /usr/local/bin is
+# on the default PATH for every SSH session, login or not.
+- name: Hadoop on PATH for non-interactive SSH sessions too
+  ansible.builtin.template:
+    src: hdfs-wrapper.sh.j2
+    dest: /usr/local/bin/hdfs
+    mode: "0755"
+
+- name: Systemd units
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "/etc/systemd/system/{{ item }}"
+    mode: "0644"
+  loop: [hdfs-namenode.service, hdfs-datanode.service]

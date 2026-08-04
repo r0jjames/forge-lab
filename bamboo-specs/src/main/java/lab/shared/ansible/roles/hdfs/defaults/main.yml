@@ -1,1 +1,11 @@
 ---
+hdfs_version: "3.4.1"
+hdfs_mirror: "https://dlcdn.apache.org/hadoop/common"
+hdfs_home: /opt/hadoop
+hdfs_data_dir: /var/lib/hadoop
+hdfs_user: hdfs
+hdfs_namenode_port: 8020
+hdfs_ui_port: 9870
+hdfs_replication: 2
+hdfs_app_dir: /user/app
+hdfs_app_owner: ubuntu

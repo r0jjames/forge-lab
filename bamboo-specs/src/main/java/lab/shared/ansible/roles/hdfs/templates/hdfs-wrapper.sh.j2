@@ -1,0 +1,9 @@
+#!/bin/sh
+# A bare, non-interactive `ssh host cmd` does not source /etc/profile.d, so
+# /etc/profile.d/hadoop.sh alone does not put hdfs on PATH for scripted SSH
+# sessions (e.g. the addon verifier). /usr/local/bin is on the default PATH
+# for every session, interactive or not, so this wrapper lives there instead.
+export JAVA_HOME={{ hdfs_java_home }}
+export HADOOP_HOME={{ hdfs_home }}
+export HADOOP_CONF_DIR={{ hdfs_home }}/etc/hadoop
+exec {{ hdfs_home }}/bin/hdfs "$@"

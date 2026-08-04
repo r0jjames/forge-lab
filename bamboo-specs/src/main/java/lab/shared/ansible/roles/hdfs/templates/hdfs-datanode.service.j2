@@ -1,0 +1,18 @@
+[Unit]
+Description=HDFS DataNode
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User={{ hdfs_user }}
+Environment=JAVA_HOME={{ hdfs_java_home }}
+Environment=HADOOP_HOME={{ hdfs_home }}
+Environment=HADOOP_CONF_DIR={{ hdfs_home }}/etc/hadoop
+Environment=HADOOP_PID_DIR={{ hdfs_data_dir }}/pid
+ExecStart={{ hdfs_home }}/bin/hdfs --daemon start datanode
+ExecStop={{ hdfs_home }}/bin/hdfs --daemon stop datanode
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
