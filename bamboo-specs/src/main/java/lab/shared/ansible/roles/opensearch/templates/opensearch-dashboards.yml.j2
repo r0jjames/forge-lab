@@ -1,0 +1,9 @@
+---
+server.host: "0.0.0.0"
+server.port: {{ opensearch_dashboards_port }}
+opensearch.hosts: ["http://{{ ansible_host }}:{{ opensearch_http_port }}"]
+
+# The backend cluster runs with plugins.security.disabled: true (see
+# opensearch.yml.j2); without this, Dashboards tries to authenticate against
+# security endpoints the backend never registers and fails to come up.
+opensearch_security.enabled: false

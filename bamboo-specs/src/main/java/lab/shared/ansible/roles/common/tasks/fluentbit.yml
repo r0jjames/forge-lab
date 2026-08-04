@@ -1,0 +1,51 @@
+---
+# rsyslog guarantees /var/log/syslog exists and keeps growing, independent of
+# whatever the base cloud image ships with — Fluent Bit's tail input needs a
+# real, continuously written file.
+- name: Install rsyslog so /var/log/syslog exists to tail
+  ansible.builtin.apt:
+    name: rsyslog
+    state: present
+    update_cache: true
+
+- name: Fluent Bit apt key
+  ansible.builtin.get_url:
+    url: https://packages.fluentbit.io/fluentbit.key
+    dest: /etc/apt/keyrings/fluentbit.asc
+    mode: "0644"
+
+- name: Fluent Bit apt repo
+  ansible.builtin.deb822_repository:
+    name: fluentbit
+    types: [deb]
+    uris: https://packages.fluentbit.io/ubuntu/noble/
+    suites: noble
+    components: [main]
+    signed_by: /etc/apt/keyrings/fluentbit.asc
+    state: present
+
+- name: Install Fluent Bit
+  ansible.builtin.apt:
+    name: fluent-bit
+    state: present
+    update_cache: true
+
+- name: Tail position database directory
+  ansible.builtin.file:
+    path: /var/lib/fluent-bit
+    state: directory
+    mode: "0755"
+
+- name: Fluent Bit configuration
+  ansible.builtin.template:
+    src: fluent-bit.conf.j2
+    dest: /etc/fluent-bit/fluent-bit.conf
+    mode: "0644"
+  notify: Restart fluent-bit
+
+- name: Start Fluent Bit
+  ansible.builtin.systemd:
+    name: fluent-bit
+    state: started
+    enabled: true
+    daemon_reload: true

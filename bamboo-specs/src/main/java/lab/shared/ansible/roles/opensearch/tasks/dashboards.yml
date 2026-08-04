@@ -1,0 +1,55 @@
+---
+- name: Dashboards service account
+  ansible.builtin.user:
+    name: "{{ opensearch_dashboards_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ opensearch_dashboards_home }}"
+    create_home: false
+
+- name: Dashboards install directory
+  ansible.builtin.file:
+    path: "{{ opensearch_dashboards_home }}"
+    state: directory
+    owner: "{{ opensearch_dashboards_user }}"
+    group: "{{ opensearch_dashboards_user }}"
+    mode: "0755"
+
+- name: Download and unpack OpenSearch Dashboards
+  ansible.builtin.unarchive:
+    src: >-
+      {{ opensearch_mirror }}/opensearch-dashboards/{{ opensearch_dashboards_version }}/{{ opensearch_dashboards_archive }}
+    dest: "{{ opensearch_dashboards_home }}"
+    remote_src: true
+    extra_opts: [--strip-components=1]
+    owner: "{{ opensearch_dashboards_user }}"
+    group: "{{ opensearch_dashboards_user }}"
+    creates: "{{ opensearch_dashboards_home }}/bin/opensearch-dashboards"
+
+- name: Dashboards configuration
+  ansible.builtin.template:
+    src: opensearch-dashboards.yml.j2
+    dest: "{{ opensearch_dashboards_home }}/config/opensearch_dashboards.yml"
+    owner: "{{ opensearch_dashboards_user }}"
+    group: "{{ opensearch_dashboards_user }}"
+    mode: "0644"
+  notify: Restart opensearch-dashboards
+
+- name: Dashboards systemd unit
+  ansible.builtin.template:
+    src: opensearch-dashboards.service.j2
+    dest: /etc/systemd/system/opensearch-dashboards.service
+    mode: "0644"
+  notify: Restart opensearch-dashboards
+
+- name: Start OpenSearch Dashboards
+  ansible.builtin.systemd:
+    name: opensearch-dashboards
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for the OpenSearch Dashboards port
+  ansible.builtin.wait_for:
+    port: "{{ opensearch_dashboards_port }}"
+    timeout: 120

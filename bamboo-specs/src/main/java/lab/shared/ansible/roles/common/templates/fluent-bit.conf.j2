@@ -1,0 +1,21 @@
+[SERVICE]
+    Flush        5
+    Log_Level    info
+
+[INPUT]
+    Name         tail
+    Path         /var/log/syslog,/var/log/auth.log
+    Tag          forgelab.{{ inventory_hostname }}
+    Path_Key     source_file
+    DB           /var/lib/fluent-bit/forgelab.db
+
+[OUTPUT]
+    Name                 opensearch
+    Match                *
+    Host                 {{ hostvars[groups['opensearch'][0]].ansible_host }}
+    Port                 {{ common_fluentbit_opensearch_port }}
+    Logstash_Format      On
+    Logstash_Prefix      {{ common_fluentbit_index }}
+    # OpenSearch 2.x+ dropped mapping types; without this the output plugin
+    # still tries to send one and every bulk request is rejected.
+    Suppress_Type_Name   On

@@ -11,3 +11,12 @@
 - name: Cluster-node kernel preparation
   ansible.builtin.include_tasks: cluster_node.yml
   when: inventory_hostname in groups['k8s_nodes'] | default([])
+
+# Every host ships its logs to OpenSearch except the opensearch nodes
+# themselves — they are the destination, not a source, and shipping their own
+# service logs back into the cluster they are still forming has no upside.
+- name: Fluent Bit log shipping
+  ansible.builtin.include_tasks: fluentbit.yml
+  when:
+    - "'opensearch' in addons.split(',')"
+    - inventory_hostname not in groups['opensearch'] | default([])

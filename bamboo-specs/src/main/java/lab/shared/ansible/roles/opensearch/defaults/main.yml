@@ -1,1 +1,18 @@
 ---
+opensearch_version: "3.4.0"
+opensearch_mirror: "https://artifacts.opensearch.org/releases/bundle"
+opensearch_home: /opt/opensearch
+opensearch_data_dir: /var/lib/opensearch
+opensearch_user: opensearch
+opensearch_cluster_name: forgelab
+opensearch_http_port: 9200
+opensearch_transport_port: 9300
+# Modest and fixed rather than auto-tuned off total RAM: these VMs are 6G and
+# also run the OS, and Dashboards on node 1 — auto-sizing risks an OOM.
+opensearch_heap_size: 1g
+
+opensearch_dashboards_version: "{{ opensearch_version }}"
+opensearch_dashboards_archive: "opensearch-dashboards-{{ opensearch_dashboards_version }}-linux-arm64.tar.gz"
+opensearch_dashboards_home: /opt/opensearch-dashboards
+opensearch_dashboards_user: opensearch-dashboards
+opensearch_dashboards_port: 5601

@@ -1,0 +1,22 @@
+---
+cluster.name: {{ opensearch_cluster_name }}
+node.name: {{ inventory_hostname }}
+network.host: 0.0.0.0
+http.port: {{ opensearch_http_port }}
+transport.port: {{ opensearch_transport_port }}
+path.data: {{ opensearch_data_dir }}/data
+path.logs: {{ opensearch_data_dir }}/logs
+
+discovery.seed_hosts:
+{% for host in groups['opensearch'] %}
+  - {{ hostvars[host].ansible_host }}
+{% endfor %}
+cluster.initial_cluster_manager_nodes:
+{% for host in groups['opensearch'] %}
+  - {{ host }}
+{% endfor %}
+
+# This is a lab-only, plain-HTTP, no-password service: the security plugin is
+# disabled outright rather than configured, which is also why nothing in this
+# addon (or Fluent Bit, which ships logs to it) needs a credential.
+plugins.security.disabled: true

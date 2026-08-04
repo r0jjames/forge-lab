@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenSearch Dashboards
+After=network-online.target opensearch.service
+Wants=network-online.target
+Requires=opensearch.service
+
+[Service]
+Type=simple
+User={{ opensearch_dashboards_user }}
+Group={{ opensearch_dashboards_user }}
+WorkingDirectory={{ opensearch_dashboards_home }}
+ExecStart={{ opensearch_dashboards_home }}/bin/opensearch-dashboards
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

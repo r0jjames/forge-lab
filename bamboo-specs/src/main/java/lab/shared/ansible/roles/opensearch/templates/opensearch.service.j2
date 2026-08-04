@@ -1,0 +1,22 @@
+[Unit]
+Description=OpenSearch
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ opensearch_user }}
+Group={{ opensearch_user }}
+Environment=OPENSEARCH_HOME={{ opensearch_home }}
+Environment=OPENSEARCH_PATH_CONF={{ opensearch_home }}/config
+Environment=OPENSEARCH_JAVA_HOME={{ opensearch_home }}/jdk
+Environment=OPENSEARCH_JAVA_OPTS=-Xms{{ opensearch_heap_size }} -Xmx{{ opensearch_heap_size }}
+LimitNOFILE=65535
+LimitMEMLOCK=infinity
+WorkingDirectory={{ opensearch_home }}
+ExecStart={{ opensearch_home }}/bin/opensearch
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+---
+# Fluent Bit ships every non-opensearch host's logs to the OpenSearch node
+# that also runs Dashboards (groups['opensearch'][0]). This duplicates the
+# opensearch role's http.port default rather than referencing it directly:
+# common runs in site.yml's first play, before the opensearch role has run
+# for any host, so opensearch_http_port is not yet a reliable cross-role
+# reference. Keep the two in sync if either changes.
+common_fluentbit_opensearch_port: 9200
+common_fluentbit_index: forgelab-logs
