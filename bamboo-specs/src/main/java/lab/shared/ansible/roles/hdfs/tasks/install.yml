@@ -61,9 +61,30 @@
     - "{{ hdfs_data_dir }}/pid"
     - "{{ hdfs_home }}"
 
-- name: Download and unpack Hadoop
+# unarchive's remote_src download used Ansible's default 10s socket-read
+# timeout with no retries. Three data nodes pulling the ~1GB tarball at once
+# through the same host NAT stalls past 10s and the task dies mid-transfer.
+# get_url's own `timeout:` is the same kind of socket-read timeout, just
+# raised generously, and `until`/`retries`/`delay` re-run the whole download
+# on a stall instead of failing the play. `checksum:` (fetched from the
+# mirror's published .sha512, itself a few hundred bytes) both catches a
+# truncated transfer and gives idempotency: get_url skips re-downloading
+# once the local file's digest already matches it.
+- name: Download the Hadoop tarball
+  ansible.builtin.get_url:
+    url: "{{ hdfs_mirror }}/hadoop-{{ hdfs_version }}/hadoop-{{ hdfs_version }}.tar.gz"
+    checksum: "sha512:{{ hdfs_mirror }}/hadoop-{{ hdfs_version }}/hadoop-{{ hdfs_version }}.tar.gz.sha512"
+    dest: "/tmp/hadoop-{{ hdfs_version }}.tar.gz"
+    mode: "0644"
+    timeout: 180
+  register: hdfs_tarball_download
+  until: hdfs_tarball_download is succeeded
+  retries: 3
+  delay: 15
+
+- name: Unpack Hadoop
   ansible.builtin.unarchive:
-    src: "{{ hdfs_mirror }}/hadoop-{{ hdfs_version }}/hadoop-{{ hdfs_version }}.tar.gz"
+    src: "/tmp/hadoop-{{ hdfs_version }}.tar.gz"
     dest: "{{ hdfs_home }}"
     remote_src: true
     extra_opts: [--strip-components=1]

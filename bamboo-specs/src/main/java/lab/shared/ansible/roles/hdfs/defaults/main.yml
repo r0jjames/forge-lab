@@ -1,5 +1,10 @@
 ---
 hdfs_version: "3.4.1"
+# dlcdn.apache.org is the current-release mirror: fast, but it drops older
+# releases and throttles under load. If it is slow or a version has aged out,
+# point this at the durable archive instead:
+#   hdfs_mirror: "https://archive.apache.org/dist/hadoop/common"
+# Both are confirmed to serve hadoop-3.4.1 (tarball + .sha512).
 hdfs_mirror: "https://dlcdn.apache.org/hadoop/common"
 hdfs_home: /opt/hadoop
 hdfs_data_dir: /var/lib/hadoop
