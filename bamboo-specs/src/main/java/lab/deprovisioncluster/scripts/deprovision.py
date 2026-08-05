@@ -1,24 +1,21 @@
 #!/usr/bin/env python3
 """Tear down a lab cluster: terraform destroy, backend sweep, clean generated files."""
 
-import re
 import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
-from forgelab import credentials, multipass, paths, proc, registry, sshconf, terraform  # noqa: E402
+from forgelab import (  # noqa: E402
+    credentials, multipass, paths, planvars, proc, registry, sshconf, terraform,
+)
 from forgelab import tfvars as tfvars_mod  # noqa: E402
 
-CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
+USAGE = "usage: deprovision.py <cluster_name>"
 
 
 def main(argv):
-    cluster = argv[0] if argv else ""
-    if not cluster:
-        proc.die("usage: deprovision.py <cluster_name>")
-    if not CLUSTER_NAME_RE.fullmatch(cluster):
-        proc.die("cluster_name must match ^[a-z0-9-]+$")
+    cluster = planvars.require_cluster_name(argv[0] if argv else "", USAGE)
     proc.require_tools("terraform", "multipass")
     tfvars = tfvars_mod.resolve(cluster)
 

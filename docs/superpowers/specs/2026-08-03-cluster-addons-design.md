@@ -1,7 +1,13 @@
 # Cluster addons: Keycloak, HDFS, Splunk (and k9s)
 
 Date: 2026-08-03
-Status: approved, not yet implemented
+Status: implemented, **with one substitution** — everything below that says
+Splunk was built as OpenSearch instead. Splunk Enterprise ships no Linux arm64
+build, which makes it a non-starter on Apple Silicon Multipass VMs; the swap
+and what replaced it are described in `docs/using-cluster-addons.md`. Read the
+Splunk sections here as the shape of the addon (three VMs, one query node, two
+data nodes, its own VM role gated by the `addons` list), not as what is on
+disk. The shipped addon names are `keycloak`, `hdfs`, `opensearch`.
 
 ## Problem
 

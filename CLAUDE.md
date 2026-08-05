@@ -34,8 +34,10 @@ OpenSearch/Dashboards) and k9s day-to-day, see docs/using-cluster-addons.md.
   / `make deprovision CLUSTER=lab1` — provision also writes
   `~/.forgelab/ssh_config.d/<cluster>.conf` (included from `~/.ssh/config`) so
   `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu` with the lab key;
-  deprovision removes it. `ADDONS=` overrides the cluster's tfvars for this
-  run; an empty value disables all addons. Provision also writes
+  deprovision removes it. `TYPE=`/`ADDONS=` override the cluster's tfvars for
+  this run; empty or left at the plan-variable placeholder means "not set" and
+  the tfvars wins. `ADDONS=none` installs no addons at all and cannot be
+  combined with a real name. Provision also writes
   `cluster_registered/<cluster>_cluster_info.yml` (tracked, uncommitted) as its
   last step; deprovision deletes it
 - `make addons CLUSTER=lab1 [TYPE=k8s] [ADDONS=hdfs]` — re-run the install stage
@@ -105,3 +107,12 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
   sizing and enablement cannot disagree. k9s is not an addon — it ships with the
   k8s role. Addon secrets live in `~/.forgelab/<cluster>-credentials.yml` (0600)
   and never in `cluster_registered/`
+- Plan variables are validated in `forgelab/planvars.py` and nowhere else. Their
+  Bamboo defaults are placeholders documenting the legal values (Bamboo has no
+  hint field), so each default is deliberately not a legal value and means "no
+  override". The strings are mirrored in `ProvisionClusterSpec.java` and pinned
+  by `ProvisionClusterSpecTest`; change both or neither
+- PROV and DEPROV each open with a `Validate` stage carrying NO `agent.role`
+  requirement, so a bad variable fails in seconds on any agent instead of
+  queueing behind the host agent. Entrypoints call `planvars` first as well, so
+  `make provision` fails identically

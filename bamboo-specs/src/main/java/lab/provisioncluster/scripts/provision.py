@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Provision a lab cluster: validate, terraform apply, install, verify."""
 
-import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -9,14 +8,14 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
 from forgelab import (  # noqa: E402
-    credentials, inventory, multipass, paths, proc, registry, sshconf, terraform,
+    credentials, inventory, multipass, paths, planvars, proc, registry, sshconf,
+    terraform,
 )
 from forgelab import tfvars as tfvars_mod  # noqa: E402
-from forgelab.tfvars import ADDONS, resolve_addons  # noqa: E402
 
 import install  # noqa: E402
 
-CLUSTER_NAME_RE = re.compile(r"[a-z0-9-]+")
+USAGE = "usage: provision.py <cluster_name> [cluster_type] [addons]"
 
 
 # Which addon owns which VM role. Keycloak owns none — it runs on the k8s
@@ -39,24 +38,19 @@ def node_count_overrides(addons) -> list:
 
 
 def main(argv):
-    cluster = argv[0] if argv else ""
-    if not cluster:
-        proc.die("usage: provision.py <cluster_name> [cluster_type] [addons]")
-    type_override = argv[1] if len(argv) > 1 else ""
-    addons_override = argv[2] if len(argv) > 2 else ""
-
-    # Stage 1: Validate
+    # Stage 1: Validate. The plan variables first, before a tool lookup or a
+    # multipass round trip, so a typo costs seconds. The Validate stage of the
+    # PROV plan runs the same checks earlier still, on any agent.
+    cluster, cluster_type, addons, tfvars = planvars.resolve(
+        argv[0] if argv else "",
+        argv[1] if len(argv) > 1 else "",
+        argv[2] if len(argv) > 2 else "",
+        USAGE,
+    )
     proc.require_tools("terraform", "multipass", "ansible-playbook", "ssh")
-    if not CLUSTER_NAME_RE.fullmatch(cluster):
-        proc.die("cluster_name must match ^[a-z0-9-]+$")
     if multipass.list_vms(f"{cluster}-"):
         proc.die(f"VMs with prefix '{cluster}-' already exist; deprovision first")
 
-    tfvars = tfvars_mod.resolve(cluster)
-    cluster_type = tfvars_mod.resolve_cluster_type(
-        type_override, tfvars.read_text(), str(tfvars)
-    )
-    addons = resolve_addons(addons_override, tfvars.read_text(), str(tfvars))
     print(
         f"==> provisioning '{cluster}' type={cluster_type} "
         f"addons={','.join(addons) or 'none'} config={tfvars.name}"

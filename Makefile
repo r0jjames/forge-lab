@@ -123,12 +123,12 @@ specs-publish: ## Publish all Bamboo Specs plans to the server
 	done
 
 .PHONY: provision
-provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=]
+provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=hdfs,keycloak,opensearch|none]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
 	$(LAB)/provisioncluster/scripts/provision.py $(CLUSTER) "$(TYPE)" "$(ADDONS)"
 
 .PHONY: addons
-addons: ## Re-run the install stage only: make addons CLUSTER=lab1 [TYPE=] [ADDONS=]
+addons: ## Re-run the install stage only: make addons CLUSTER=lab1 [TYPE=] [ADDONS=hdfs|none]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
 	$(LAB)/provisioncluster/scripts/install.py $(CLUSTER) "$(TYPE)" "$(ADDONS)"
 

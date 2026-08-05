@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 import provision
+from forgelab import planvars
 from forgelab.multipass import Node
 from forgelab.proc import LabError
 
@@ -188,37 +189,35 @@ def test_passes_the_resolved_cluster_type_to_ansible(lab, monkeypatch):
     assert seen["payload"]["cluster_type"] == "dcos"
 
 
-def test_resolve_addons_reads_the_tfvars_file():
-    assert provision.resolve_addons("", 'addons = "hdfs,opensearch"\n', "f.tfvars") == [
-        "hdfs",
-        "opensearch",
-    ]
+def test_validates_before_touching_the_backend(lab, monkeypatch):
+    """A bad plan variable must not cost a multipass round trip.
+
+    The Validate stage catches this earlier still, but `make provision` has no
+    stages — this ordering is what makes the CLI fail as fast as the plan.
+    """
+
+    def explode(*_args, **_kwargs):
+        raise AssertionError("multipass was queried before validation finished")
+
+    monkeypatch.setattr(provision.multipass, "list_vms", explode)
+    with pytest.raises(LabError, match=r"unknown addon\(s\) \[kafka\]"):
+        provision.main(["lab1", "", "kafka"])
 
 
-def test_resolve_addons_prefers_the_override():
-    assert provision.resolve_addons("keycloak", 'addons = "hdfs"\n', "f.tfvars") == [
-        "keycloak"
-    ]
+def test_placeholder_addons_fall_back_to_the_tfvars_file(lab, monkeypatch):
+    """The shipped default is a menu, not a request for those three addons."""
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
+    seen = _capture_extra_vars(monkeypatch)
+    provision.main(["lab1", planvars.PLACEHOLDER_TYPE, planvars.PLACEHOLDER_ADDONS])
+    assert seen["payload"]["addons"] == "hdfs"
+    assert seen["payload"]["cluster_type"] == "k8s"
 
 
-def test_resolve_addons_falls_back_when_the_override_is_blank():
-    """Bamboo always passes ${bamboo.addons}, which may be empty."""
-    assert provision.resolve_addons("  ", 'addons = "hdfs"\n', "f.tfvars") == ["hdfs"]
-
-
-def test_resolve_addons_rejects_an_unknown_name_from_the_file():
-    with pytest.raises(LabError, match=r"unknown addon\(s\) \[kafka\] from f.tfvars"):
-        provision.resolve_addons("", 'addons = "kafka"\n', "f.tfvars")
-
-
-def test_resolve_addons_rejects_an_unknown_name_from_the_override():
-    with pytest.raises(LabError, match="from the ADDONS override"):
-        provision.resolve_addons("kafka", "", "f.tfvars")
-
-
-def test_resolve_addons_names_the_known_addons_in_the_error():
-    with pytest.raises(LabError, match="known: keycloak hdfs opensearch"):
-        provision.resolve_addons("kafka", "", "f.tfvars")
+def test_none_disables_every_addon(lab, monkeypatch):
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,keycloak"\n')
+    seen = _capture_extra_vars(monkeypatch)
+    provision.main(["lab1", "", "none"])
+    assert seen["payload"]["addons"] == ""
 
 
 def test_passes_the_resolved_addons_to_ansible(lab, monkeypatch):

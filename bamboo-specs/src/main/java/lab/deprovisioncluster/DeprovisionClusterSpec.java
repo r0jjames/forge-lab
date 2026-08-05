@@ -30,7 +30,19 @@ public class DeprovisionClusterSpec {
                         new Variable("cluster_name", "lab1"))
                 .planBranchManagement(new PlanBranchManagement().delete(
                         new com.atlassian.bamboo.specs.api.builders.plan.branches.BranchCleanup()))
-                .stages(new Stage("Deprovision").jobs(
+                .stages(
+                        // No agent.role requirement, same reasoning as PROV's
+                        // Validate stage: a malformed cluster_name should not
+                        // have to queue behind the host agent to be rejected.
+                        new Stage("Validate").jobs(
+                                new Job("Validate", new BambooKey("JOB0"))
+                                        .tasks(
+                                        new VcsCheckoutTask().description("checkout")
+                                                .checkoutItems(new CheckoutItem().defaultRepository()),
+                                        new ScriptTask().description("validate plan variables")
+                                                .inlineBody("bamboo-specs/src/main/java/lab/deprovisioncluster/scripts/validate_deprov.py "
+                                                        + "\"${bamboo.cluster_name}\""))),
+                        new Stage("Deprovision").jobs(
                         new Job("Deprovision", new BambooKey("JOB1"))
                                 // Host-only, same reason as ProvisionClusterSpec: the
                                 // multipass/terraform toolchain exists only on the host agent.

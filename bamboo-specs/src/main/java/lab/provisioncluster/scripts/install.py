@@ -14,9 +14,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
-from forgelab import credentials, paths, proc  # noqa: E402
-from forgelab import tfvars as tfvars_mod  # noqa: E402
-from forgelab.tfvars import resolve_addons  # noqa: E402
+from forgelab import credentials, paths, planvars, proc  # noqa: E402
+
+USAGE = "usage: install.py <cluster_name> [cluster_type] [addons]"
 
 
 def extra_vars(cluster_type: str, addons, report, secret_values: dict) -> dict:
@@ -60,17 +60,12 @@ def run(cluster: str, cluster_type: str, addons):
 
 
 def main(argv):
-    cluster = argv[0] if argv else ""
-    if not cluster:
-        proc.die("usage: install.py <cluster_name> [cluster_type] [addons]")
-    tfvars_path = tfvars_mod.resolve(cluster)
-    text = tfvars_path.read_text()
-
-    type_override = argv[1] if len(argv) > 1 else ""
-    cluster_type = tfvars_mod.resolve_cluster_type(type_override, text, str(tfvars_path))
-
-    addons_override = argv[2] if len(argv) > 2 else ""
-    addons = resolve_addons(addons_override, text, str(tfvars_path))
+    cluster, cluster_type, addons, _ = planvars.resolve(
+        argv[0] if argv else "",
+        argv[1] if len(argv) > 1 else "",
+        argv[2] if len(argv) > 2 else "",
+        USAGE,
+    )
     run(cluster, cluster_type, addons)
 
 

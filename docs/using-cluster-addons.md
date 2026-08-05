@@ -32,10 +32,25 @@ You can override the tfvars value for a single run without editing the file:
 - From Bamboo: set the `addons` plan variable on a manual run of the
   Provision plan
 
-An **empty** override (`ADDONS=` with nothing after the `=`, or the Bamboo
-variable left blank but explicitly set) disables every addon, even if the
-tfvars file lists some. Leaving the override unset entirely — the normal
-case — falls through to whatever the tfvars file says.
+An **empty** override falls through to whatever the tfvars file says. That is
+the normal case, and it is also what the Bamboo plan variable's shipped
+default — `hdfs,keycloak,opensearch (or none)` — resolves to: it is a menu of
+the legal values, not a request for those three, and the pipeline treats it as
+"not set".
+
+To install **no addons at all** without editing the tfvars file, say so:
+
+```
+make provision CLUSTER=lab1 ADDONS=none
+```
+
+`none` cannot be mixed with a real addon name — `ADDONS=none,hdfs` is a
+validation error rather than a guess at which one you meant.
+
+Anything unrecognised fails before Terraform runs. `ADDONS=splunk` gets
+`unknown addon(s) [splunk] from the ADDONS override; known: keycloak hdfs
+opensearch none`, and in Bamboo it fails in the Validate stage, which runs on
+any agent — you don't wait for the host agent to learn you typed it wrong.
 
 To iterate on an addon's Ansible role without tearing down and rebuilding
 the whole cluster, re-run just the install stage against the existing

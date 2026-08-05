@@ -37,12 +37,18 @@ recognize it and treat it as "not set":
 ```java
 new Variable("cluster_name", "lab1"),
 new Variable("cluster_type", "k8s | dcos"),
-new Variable("addons",       "hdfs,keycloak,opensearch")
+new Variable("addons",       "hdfs,keycloak,opensearch (or none)")
 ```
 
 The run dialog now states the legal values, and an unedited run still works
 — the placeholder resolves to whatever the cluster's tfvars says, which is
 the behaviour an empty default had before.
+
+Both placeholders read as menus, and neither is a legal value. That matters
+for `addons`, where a bare `hdfs,keycloak,opensearch` would be ambiguous: a
+user who genuinely wants all three would type exactly the sentinel and get
+the tfvars list instead. The `(or none)` suffix removes the collision and
+documents the `none` keyword in the same breath.
 
 The placeholder is matched **exactly**. `k8s|dcos` without spaces is a
 validation failure, not a synonym for "unset". A sentinel that matches
@@ -76,16 +82,20 @@ uses.
 
 ### Where the code lives
 
-**`lab/shared/python/forgelab/planvars.py`** — new. Pure functions, no I/O,
-stdlib only. It holds the placeholder strings, the `none` keyword, the
-cluster-name pattern (absorbing both copies of `CLUSTER_NAME_RE`), and the
-resolution rules above. `tfvars.py` keeps `CLUSTER_TYPES` and `ADDONS` as
-the source of truth for the legal sets and keeps its `resolve_*` functions,
-which delegate the placeholder question to `planvars`.
+**`lab/shared/python/forgelab/planvars.py`** — new. It holds the placeholder
+strings, the `none` keyword, the cluster-name pattern (absorbing both copies
+of `CLUSTER_NAME_RE`), and the resolution rules above.
 
-**`lab/provisioncluster/scripts/validate.py`** — new, thin. Parses argv,
-calls `planvars`, prints the resolved plan, exits. It resolves against the
-tfvars file too, so it is the one place that reports what a run will
+`resolve_cluster_type` and `resolve_addons` **move here** from `tfvars.py`
+rather than staying there and calling back: `planvars` needs `CLUSTER_TYPES`
+and `ADDONS`, and having `tfvars` reach forward for the placeholder rules
+would make the two modules import each other. `tfvars.py` keeps the legal
+sets and the file parsing; the dependency points one way, `planvars` →
+`tfvars`.
+
+**`lab/provisioncluster/scripts/validate_prov.py`** — new, thin. Parses
+argv, calls `planvars`, prints the resolved plan, exits. It resolves against
+the tfvars file too, so it is the one place that reports what a run will
 actually do:
 
 ```
@@ -95,9 +105,12 @@ actually do:
 ==> sizing       clusters/lab1.tfvars
 ```
 
-**`lab/deprovisioncluster/scripts/validate.py`** — new, its own copy of the
-same three lines over `planvars`, checking `cluster_name` alone. Plan
-directories stay sealed: no plan reaches into another plan's scripts.
+**`lab/deprovisioncluster/scripts/validate_deprov.py`** — new, its own copy
+of the same three lines over `planvars`, checking `cluster_name` alone. Plan
+directories stay sealed: no plan reaches into another plan's scripts. The
+`_prov` / `_deprov` suffixes are not decoration — the test suite puts both
+scripts directories on `sys.path`, so two files named `validate.py` would
+leave one of them permanently shadowed and untestable.
 
 When `clusters/<name>.tfvars` does not exist, validate prints
 `WARNING: no clusters/lab7.tfvars — using defaults.tfvars sizing`. A
@@ -131,8 +144,14 @@ redundant but stay, being harmless.
 New `src/test/python/test_planvars.py` covers the resolution table: exact
 placeholder match, near-miss `k8s|dcos` rejected, `none`, `none,hdfs`
 rejected, an unknown addon named in the error text, de-duplication,
-whitespace tolerance, and rejected cluster names. `test_provision.py` gains
-a case asserting validation runs before `multipass.list_vms`.
+whitespace tolerance, and rejected cluster names. `test_validate_prov.py`
+and `test_validate_deprov.py` cover the two entrypoints, including the
+tfvars-fallback warning. `test_provision.py` gains a case that stubs
+`multipass.list_vms` with a function that raises, proving validation
+finishes before the backend is touched.
+
+The `clusters_dir` fixture moves from `test_tfvars.py` to `conftest.py`,
+since three test modules now resolve a cluster's tfvars file.
 
 The two Java spec tests assert each variable's default equals the
 documented placeholder. That pairing — a Java string and a Python string

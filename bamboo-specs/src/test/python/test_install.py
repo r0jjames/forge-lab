@@ -132,17 +132,19 @@ def test_run_deletes_the_variables_file_even_when_the_playbook_fails(lab, monkey
     assert not Path(seen["varsfile"]).exists()
 
 
-def test_main_rejects_an_unknown_cluster_type(lab, monkeypatch, tmp_path):
-    tfvars_file = tmp_path / "lab1.tfvars"
-    tfvars_file.write_text('cluster_type = "k8s"\n')
-    monkeypatch.setattr(install.tfvars_mod, "resolve", lambda _: tfvars_file)
-    with pytest.raises(LabError, match=r"cluster_type must be k8s or dcos"):
+def test_main_rejects_an_unknown_cluster_type(lab, clusters_dir):
+    (clusters_dir / "lab1.tfvars").write_text('cluster_type = "k8s"\n')
+    with pytest.raises(LabError, match=r"cluster_type must be one of \[k8s dcos\]"):
         install.main(["lab1", "swarm"])
 
 
-def test_main_rejects_an_unknown_addon(lab, monkeypatch, tmp_path):
-    tfvars_file = tmp_path / "lab1.tfvars"
-    tfvars_file.write_text('cluster_type = "k8s"\n')
-    monkeypatch.setattr(install.tfvars_mod, "resolve", lambda _: tfvars_file)
+def test_main_rejects_an_unknown_addon(lab, clusters_dir):
+    (clusters_dir / "lab1.tfvars").write_text('cluster_type = "k8s"\n')
     with pytest.raises(LabError, match=r"unknown addon\(s\) \[kafka\]"):
         install.main(["lab1", "k8s", "kafka"])
+
+
+def test_main_rejects_a_malformed_cluster_name(lab, clusters_dir):
+    """`make addons` gets the same gate the plan's Validate stage applies."""
+    with pytest.raises(LabError, match="cluster_name must match"):
+        install.main(["Lab1"])

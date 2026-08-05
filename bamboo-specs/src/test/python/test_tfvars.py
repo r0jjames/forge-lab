@@ -1,14 +1,9 @@
 import pytest
 
-from forgelab import paths
 from forgelab import tfvars as tfvars_mod
 from forgelab.proc import LabError
 
-
-@pytest.fixture
-def clusters_dir(tmp_path, monkeypatch):
-    monkeypatch.setattr(paths, "CLUSTERS_DIR", tmp_path)
-    return tmp_path
+# clusters_dir lives in conftest.py — test_planvars.py resolves tfvars too.
 
 
 def test_resolve_prefers_the_named_cluster(clusters_dir):

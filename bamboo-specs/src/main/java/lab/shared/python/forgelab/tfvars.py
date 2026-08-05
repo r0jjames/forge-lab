@@ -1,4 +1,9 @@
-"""Per-cluster sizing files under lab/shared/clusters/."""
+"""Per-cluster sizing files under lab/shared/clusters/.
+
+Parsing and the legal value sets only. Turning a Bamboo plan variable into one
+of these values is planvars' job, which imports this module — keep the
+dependency pointing that way.
+"""
 
 from __future__ import annotations
 
@@ -68,31 +73,3 @@ def parse_addons(text: str) -> list:
     return [name for name in (part.strip() for part in raw.split(",")) if name]
 
 
-def resolve_cluster_type(override: str, tfvars_text: str, source: str) -> str:
-    """The cluster's type. The plan variable wins over the tfvars file."""
-    if override:
-        cluster_type, source = override, "the TYPE override"
-    else:
-        cluster_type = parse_cluster_type(tfvars_text)
-    if cluster_type not in CLUSTER_TYPES:
-        die(
-            f"cluster_type must be k8s or dcos "
-            f"(got '{cluster_type}' from {source})"
-        )
-    return cluster_type
-
-
-def resolve_addons(override: str, tfvars_text: str, source: str) -> list:
-    """The cluster's addon list. The plan variable wins over the tfvars file."""
-    if override.strip():
-        names = [n for n in (p.strip() for p in override.split(",")) if n]
-        source = "the ADDONS override"
-    else:
-        names = parse_addons(tfvars_text)
-    unknown = sorted({n for n in names if n not in ADDONS})
-    if unknown:
-        die(
-            f"unknown addon(s) [{' '.join(unknown)}] from {source}; "
-            f"known: {' '.join(ADDONS)}"
-        )
-    return names
