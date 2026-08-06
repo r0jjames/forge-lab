@@ -95,7 +95,9 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
 3. Its scripts in `lab/<planid>/scripts/`; nothing outside that plan uses them
 4. Shared by 2+ plans → `lab/shared/`; never reach into another plan's dir
 5. Not plan-executed → `infra/`, not `lab/`
-6. Register the class in the Makefile's `SPEC_CLASSES`
+6. Nothing to register — the publisher discovers `lab/*/*Spec.java` and
+   derives the class from the path; your spec needs a `main()` calling
+   `BambooServer.publish`
 7. `ScriptTask` bodies are repo-relative from Bamboo's checkout root:
    `bamboo-specs/src/main/java/lab/<planid>/scripts/<script>.py`
 
