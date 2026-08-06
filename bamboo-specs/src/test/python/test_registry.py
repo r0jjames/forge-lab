@@ -8,16 +8,14 @@ import pytest
 from forgelab import registry
 
 SIZING = {
-    "cluster_type": "k8s",
-    "mgmt_cpu": "2",
-    "mgmt_mem": "4G",
-    "mgmt_disk": "20G",
-    "compute_cpu": "2",
-    "compute_mem": "3G",
-    "compute_disk": "20G",
+    "management": {"cpu": "2", "mem": "4G", "disk": "20G"},
+    "compute": {"cpu": "2", "mem": "3G", "disk": "20G"},
 }
 
-HOSTS = [("lab1-mgmt-1", "192.168.252.10"), ("lab1-compute-1", "192.168.252.11")]
+HOSTS = [
+    ("lab1-management-1", "192.168.252.10"),
+    ("lab1-compute-1", "192.168.252.11"),
+]
 
 COMPONENTS = [
     {"name": "kubernetes", "version": "1.30"},
@@ -53,10 +51,10 @@ def test_renders_the_whole_file(monkeypatch):
         "ssh:\n"
         "  user: ubuntu\n"
         '  key: "~/.forgelab/id_ed25519"\n'
-        "  example: ssh lab1-mgmt-1\n"
+        "  example: ssh lab1-management-1\n"
         "nodes:\n"
-        "  - name: lab1-mgmt-1\n"
-        "    role: mgmt\n"
+        "  - name: lab1-management-1\n"
+        "    role: management\n"
         "    ip: 192.168.252.10\n"
         '    cpu: "2"\n'
         "    mem: 4G\n"
@@ -81,10 +79,10 @@ def test_quotes_only_what_bare_yaml_would_change():
     assert registry._scalar("2") == '"2"'
     assert registry._scalar("no") == '"no"'
     assert registry._scalar("") == '""'
-    assert registry._scalar("ssh lab1-mgmt-1: now") == '"ssh lab1-mgmt-1: now"'
+    assert registry._scalar("ssh lab1-management-1: now") == '"ssh lab1-management-1: now"'
     assert registry._scalar("192.168.252.10") == "192.168.252.10"
     assert registry._scalar("4G") == "4G"
-    assert registry._scalar("lab1-mgmt-1") == "lab1-mgmt-1"
+    assert registry._scalar("lab1-management-1") == "lab1-management-1"
 
 
 def test_the_rendered_file_parses_as_yaml():
@@ -108,36 +106,38 @@ def test_renders_empty_collections_as_flow_sequences():
     text = registry.render("lab1", "k8s", "2026-08-03T14:22:11Z", [], [])
     assert "nodes: []" in text
     assert "components: []" in text
-    assert "example: ssh lab1-mgmt-1" in text
+    assert "example: ssh lab1-management-1" in text
 
 
 def test_reads_role_and_sizing_for_each_node():
-    mgmt, compute = registry.nodes_from(HOSTS, SIZING)
-    assert (mgmt.role, mgmt.ip, mgmt.mem) == ("mgmt", "192.168.252.10", "4G")
+    management, compute = registry.nodes_from(HOSTS, SIZING)
+    assert (management.role, management.ip, management.mem) == (
+        "management", "192.168.252.10", "4G",
+    )
     assert (compute.role, compute.disk) == ("compute", "20G")
 
 
-def test_tells_the_namenode_apart_from_the_datanodes():
-    """The HDFS roles are readable straight off the name: no separate lookup."""
+def test_reads_a_dashed_technology_role_off_the_name():
+    """`lab1-hdfs-datanode-2` is role `hdfs-datanode`, not `datanode`."""
     sizing = {
-        "namenode_cpu": "2", "namenode_mem": "4G", "namenode_disk": "20G",
-        "datanode_cpu": "2", "datanode_mem": "4G", "datanode_disk": "40G",
+        "hdfs-namenode": {"cpu": "2", "mem": "4G", "disk": "20G"},
+        "hdfs-datanode": {"cpu": "2", "mem": "4G", "disk": "40G"},
     }
     hosts = [
-        ("lab1-namenode-1", "192.168.252.20"),
-        ("lab1-datanode-1", "192.168.252.21"),
+        ("lab1-hdfs-namenode-1", "192.168.252.20"),
+        ("lab1-hdfs-datanode-2", "192.168.252.22"),
     ]
     namenode, datanode = registry.nodes_from(hosts, sizing)
-    assert (namenode.role, namenode.disk) == ("namenode", "20G")
-    assert (datanode.role, datanode.disk) == ("datanode", "40G")
+    assert (namenode.role, namenode.disk) == ("hdfs-namenode", "20G")
+    assert (datanode.role, datanode.disk) == ("hdfs-datanode", "40G")
 
 
-def test_omits_sizing_the_tfvars_does_not_carry():
+def test_omits_sizing_the_config_does_not_carry():
     text = registry.render(
         "lab1", "k8s", "2026-08-03T14:22:11Z", registry.nodes_from(HOSTS, {}), []
     )
     assert "cpu:" not in text
-    assert "role: mgmt" in text
+    assert "role: management" in text
 
 
 def test_reads_the_component_report(tmp_path):
