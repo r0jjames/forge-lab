@@ -257,6 +257,39 @@ def test_rejects_an_unknown_technology():
         config(CONFIG.replace("  keycloak:\n    enabled: true", "  kafka:\n    enabled: true"))
 
 
+def test_rejects_a_node_key_the_technology_does_not_own():
+    """A stray node key would build VMs no ansible role installs onto."""
+    text = CONFIG.replace(
+        "      datanode:\n        count: 3",
+        "      standby:\n        count: 3",
+    )
+    with pytest.raises(
+        LabError,
+        match=r"unknown key 'technologies.hdfs.nodes.standby'; known: namenode datanode",
+    ):
+        config(text)
+
+
+def test_rejects_a_misspelled_node_key():
+    text = CONFIG.replace("      datanode:", "      datanodes:")
+    with pytest.raises(LabError, match=r"unknown key 'technologies.hdfs.nodes.datanodes'"):
+        config(text)
+
+
+def test_opensearch_owns_only_a_master_node():
+    text = CONFIG.replace(
+        "  opensearch:\n    enabled: false", "  opensearch:\n    enabled: true"
+    ).replace("      master:", "      data:")
+    with pytest.raises(LabError, match=r"unknown key 'technologies.opensearch.nodes.data'"):
+        config(text)
+
+
+def test_a_disabled_technology_may_still_carry_a_stray_node_key():
+    """Disabled blocks are parked, not validated — same as their sizing."""
+    text = CONFIG.replace("      master:", "      data:")
+    assert config(text).enabled() == ["hdfs", "keycloak"]
+
+
 def test_rejects_a_technology_with_no_enabled_key():
     with pytest.raises(LabError, match="missing required key 'technologies.keycloak.enabled'"):
         config(CONFIG.replace("  keycloak:\n    enabled: true", "  keycloak:\n    nodes:\n      x:\n        count: 1"))

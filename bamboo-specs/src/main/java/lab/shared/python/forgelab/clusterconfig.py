@@ -105,6 +105,16 @@ TECHNOLOGIES = ("keycloak", "hdfs", "opensearch")
 # is the one technology that owns no VM role.
 NODELESS_TECHNOLOGIES = ("keycloak",)
 
+# The node roles each technology owns. Unconstrained keys here would build VMs
+# that no ansible role installs onto, so this is the same unknown-key rule the
+# rest of the config already applies — a node role costs an ansible role too,
+# so the config was never the only place a new one has to be declared.
+TECHNOLOGY_NODES = {
+    "keycloak": (),
+    "hdfs": ("namenode", "datanode"),
+    "opensearch": ("master",),
+}
+
 # The k8s and dcos roles both take their control node from groups['management'][0],
 # and the Keycloak play targets management[0].
 CONTROL_ROLE = "management"
@@ -289,6 +299,7 @@ def from_text(text: str, source: str) -> ClusterConfig:
         if "nodes" not in block:
             _at(source, "", f"{dotted} must declare nodes when enabled")
         node_blocks = _mapping(block["nodes"], source, f"{dotted}.nodes")
+        _reject_unknown(node_blocks, TECHNOLOGY_NODES[name], source, f"{dotted}.nodes")
         if not node_blocks:
             _at(source, "", f"{dotted} must declare nodes when enabled")
         tech_roles[name] = [
