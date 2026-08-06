@@ -21,6 +21,10 @@ PUBLISH = (
 )
 MAIN_REF = "refs/heads/main"
 
+# Caps the publish subprocess so "port-forward up, Bamboo not serving yet" —
+# the reachability probe is only a TCP connect — cannot hang the push open.
+PUBLISH_TIMEOUT = 300
+
 
 def touches_main(stdin_text: str) -> bool:
     """True when this push updates refs/heads/main.
@@ -40,16 +44,21 @@ def touches_main(stdin_text: str) -> bool:
 
 
 def main(argv, stdin_text) -> int:
-    if not touches_main(stdin_text):
-        return 0
     try:
+        if not touches_main(stdin_text):
+            return 0
         subprocess.run(
-            [sys.executable, str(PUBLISH), "--skip-if-unreachable"], check=True
+            [sys.executable, str(PUBLISH), "--skip-if-unreachable"],
+            check=True,
+            timeout=PUBLISH_TIMEOUT,
         )
-    except Exception as err:  # noqa: BLE001 — a push must survive anything here
+    except BaseException as err:  # a push must survive anything here
         print(f"warning: specs publish failed, pushing anyway: {err}", file=sys.stderr)
     return 0
 
 
 if __name__ == "__main__":
-    sys.exit(main(sys.argv[1:], sys.stdin.read()))
+    try:
+        sys.exit(main(sys.argv[1:], sys.stdin.read()))
+    except BaseException:
+        sys.exit(0)

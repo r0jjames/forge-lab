@@ -1,4 +1,7 @@
 #!/bin/sh
 # git requires this exact filename. The logic lives in pre_push.py because the
 # test suite imports it, and dashes are not importable.
-exec python3 "$(dirname "$0")/pre_push.py" "$@"
+# No `exec`: if python3 is missing or broken (exit 127), the push must still
+# go through, so a failure here falls through to `|| exit 0` instead of
+# aborting the push with git's own non-zero exit.
+python3 "$(dirname "$0")/pre_push.py" "$@" || exit 0

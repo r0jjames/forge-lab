@@ -46,6 +46,13 @@ def test_main_runs_the_publisher_in_skip_mode(monkeypatch):
     assert str(pre_push.PUBLISH) in calls[0]
 
 
+def test_the_publisher_path_is_real():
+    # str(PUBLISH) in the previous test only pins the constant against
+    # itself; this pins it against the filesystem, so a rename across the
+    # infra/ -> lab/ boundary fails loudly instead of publishing nothing.
+    assert pre_push.PUBLISH.is_file()
+
+
 def test_main_skips_the_publisher_off_main(monkeypatch):
     monkeypatch.setattr(
         subprocess, "run", lambda cmd, **kw: (_ for _ in ()).throw(AssertionError("ran"))
@@ -60,3 +67,28 @@ def test_a_failing_publish_still_lets_the_push_through(monkeypatch, capsys):
     monkeypatch.setattr(subprocess, "run", boom)
     assert pre_push.main([], MAIN + "\n") == 0
     assert "warning" in capsys.readouterr().err
+
+
+def test_a_ctrl_c_during_publish_still_lets_the_push_through(monkeypatch, capsys):
+    def boom(cmd, **kwargs):
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert pre_push.main([], MAIN + "\n") == 0
+    assert "warning" in capsys.readouterr().err
+
+
+def test_a_hung_publish_still_lets_the_push_through(monkeypatch, capsys):
+    def boom(cmd, **kwargs):
+        raise subprocess.TimeoutExpired(cmd, kwargs.get("timeout"))
+
+    monkeypatch.setattr(subprocess, "run", boom)
+    assert pre_push.main([], MAIN + "\n") == 0
+    assert "warning" in capsys.readouterr().err
+
+
+def test_main_bounds_the_publish_subprocess_with_a_timeout(monkeypatch):
+    calls = []
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: calls.append(kw))
+    assert pre_push.main([], MAIN + "\n") == 0
+    assert calls[0]["timeout"] == pre_push.PUBLISH_TIMEOUT
