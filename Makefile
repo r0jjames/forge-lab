@@ -113,6 +113,11 @@ agent-run: ## Run host-local Bamboo agent in console mode
 specs-publish: ## Publish all Bamboo Specs plans to the server
 	$(LAB)/specspublish/scripts/publish_specs.py
 
+.PHONY: hooks-install
+hooks-install: ## Point git at infra/githooks (pushes to main republish the plans)
+	git config core.hooksPath infra/githooks
+	@echo "core.hooksPath=infra/githooks — a push to main now publishes the specs"
+
 .PHONY: provision
 provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=hdfs,keycloak,opensearch|none]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)

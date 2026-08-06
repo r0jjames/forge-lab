@@ -13,6 +13,7 @@ for path in (
     LAB / "specspublish" / "scripts",
     REPO_ROOT / "infra" / "scripts",
     REPO_ROOT / "infra" / "agent",
+    REPO_ROOT / "infra" / "githooks",
 ):
     sys.path.insert(0, str(path))
 

@@ -1,0 +1,4 @@
+#!/bin/sh
+# git requires this exact filename. The logic lives in pre_push.py because the
+# test suite imports it, and dashes are not importable.
+exec python3 "$(dirname "$0")/pre_push.py" "$@"
