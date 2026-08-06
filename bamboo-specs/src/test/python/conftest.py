@@ -21,10 +21,10 @@ import pytest  # noqa: E402
 
 
 @pytest.fixture
-def clusters_dir(tmp_path, monkeypatch):
-    """An empty stand-in for lab/shared/clusters/, for anything that resolves
-    a cluster's tfvars file."""
+def configs_dir(tmp_path, monkeypatch):
+    """An empty stand-in for cluster_configs/, for anything that resolves a
+    cluster's config file."""
     from forgelab import paths
 
-    monkeypatch.setattr(paths, "CLUSTERS_DIR", tmp_path)
+    monkeypatch.setattr(paths, "CLUSTER_CONFIGS_DIR", tmp_path)
     return tmp_path

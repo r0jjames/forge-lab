@@ -14,6 +14,7 @@ sequences but not anchors teaches the reader that the whole language works here.
 from __future__ import annotations
 
 import re
+from typing import NamedTuple
 
 from . import paths
 from .proc import die
@@ -92,3 +93,233 @@ def parse(text: str, source: str) -> dict:
             stack.append((indent, child))
 
     return root
+
+
+CLUSTER_TYPES = ("k8s", "dcos")
+
+# k9s is deliberately absent: it is a kubectl TUI, installed unconditionally by
+# the k8s role, not something a cluster opts into.
+TECHNOLOGIES = ("keycloak", "hdfs", "opensearch")
+
+# Keycloak runs as pods on the Kubernetes cluster the cluster_nodes form, so it
+# is the one technology that owns no VM role.
+NODELESS_TECHNOLOGIES = ("keycloak",)
+
+# The k8s and dcos roles both take their control node from groups['management'][0],
+# and the Keycloak play targets management[0].
+CONTROL_ROLE = "management"
+
+NODE_KEYS = ("count", "cpu", "memory", "disk")
+_SIZE_RE = re.compile(r"^\d+[MG]$")
+_BOOLS = {"true": True, "false": False}
+
+
+class NodeSpec(NamedTuple):
+    role: str
+    group: str
+    count: int
+    cpu: int
+    memory: str
+    disk: str
+
+
+def _at(source, dotted, message):
+    die(f"{source}: {message} ({dotted})" if dotted else f"{source}: {message}")
+
+
+def _mapping(value, source, dotted):
+    if not isinstance(value, dict):
+        _at(source, "", f"'{dotted}' must be a block of keys, not a value")
+    return value
+
+
+def _require(parent, key, source, dotted):
+    if key not in parent:
+        _at(source, "", f"missing required key '{dotted}'")
+    return parent[key]
+
+
+def _reject_unknown(parent, allowed, source, prefix):
+    for key in parent:
+        if key not in allowed:
+            dotted = f"{prefix}.{key}" if prefix else key
+            _at(source, "", f"unknown key '{dotted}'; known: {' '.join(allowed)}")
+
+
+def _int(parent, key, source, dotted, minimum):
+    raw = _require(parent, key, source, dotted)
+    if not isinstance(raw, str) or not raw.isdigit():
+        _at(source, "", f"'{dotted}' must be a whole number (got {raw!r})")
+    number = int(raw)
+    if number < minimum:
+        _at(source, "", f"'{dotted}' {key} must be at least {minimum} (got {number})")
+    return number
+
+
+def _size(parent, key, source, dotted):
+    raw = _require(parent, key, source, dotted)
+    if not isinstance(raw, str) or not _SIZE_RE.match(raw):
+        _at(source, "", f"'{dotted}' must look like 4G or 512M (got {raw!r})")
+    return raw
+
+
+def _bool(parent, key, source, dotted):
+    raw = _require(parent, key, source, dotted)
+    if raw not in _BOOLS:
+        _at(source, "", f"'{dotted}' must be true or false (got {raw!r})")
+    return _BOOLS[raw]
+
+
+def _node_spec(block, role, source, dotted):
+    _mapping(block, source, dotted)
+    _reject_unknown(block, NODE_KEYS, source, dotted)
+    return NodeSpec(
+        role=role,
+        group=role.replace("-", "_"),
+        count=_int(block, "count", source, f"{dotted}.count", 0),
+        cpu=_int(block, "cpu", source, f"{dotted}.cpu", 1),
+        memory=_size(block, "memory", source, f"{dotted}.memory"),
+        disk=_size(block, "disk", source, f"{dotted}.disk"),
+    )
+
+
+class ClusterConfig:
+    """A validated cluster config, and every view of it the pipeline needs."""
+
+    def __init__(self, source, cluster_type, cluster_roles, tech_roles, enabled):
+        self.source = source
+        self.cluster_type = cluster_type
+        self._cluster_roles = cluster_roles
+        self._tech_roles = tech_roles
+        self._enabled = enabled
+
+    def enabled(self) -> list:
+        """Enabled technology names, in file order. Ansible still gets these as
+        the comma-separated `addons` extra-var, so no `when:` clause changes."""
+        return list(self._enabled)
+
+    def roles(self) -> list:
+        """Every NodeSpec that will be built: cluster nodes, then each enabled
+        technology's nodes in file order."""
+        specs = list(self._cluster_roles)
+        for name in self._enabled:
+            specs += self._tech_roles.get(name, [])
+        return specs
+
+    def nodes_map(self, cluster: str) -> dict:
+        """The `nodes` variable Terraform applies: one entry per VM."""
+        nodes = {}
+        for spec in self.roles():
+            for index in range(spec.count):
+                nodes[f"{cluster}-{spec.role}-{index + 1}"] = {
+                    "cpus": spec.cpu,
+                    "memory": spec.memory,
+                    "disk": spec.disk,
+                }
+        return nodes
+
+    def children(self) -> dict:
+        """The inventory's `:children` groups, in the order they are emitted.
+
+        k8s_nodes is every cluster-node group — those are the VMs that receive
+        kubelet, and a technology node never does. Each enabled technology that
+        owns VMs also gets a <name>_nodes group, which is what site.yml targets.
+        """
+        groups = {"k8s_nodes": [s.group for s in self._cluster_roles]}
+        for name in self._enabled:
+            specs = self._tech_roles.get(name)
+            if specs:
+                groups[f"{name}_nodes"] = [s.group for s in specs]
+        return groups
+
+    def sizing_by_role(self) -> dict:
+        """{role: {cpu, mem, disk}} for the cluster registry."""
+        return {
+            spec.role: {
+                "cpu": str(spec.cpu), "mem": spec.memory, "disk": spec.disk,
+            }
+            for spec in self.roles()
+        }
+
+
+def from_text(text: str, source: str) -> ClusterConfig:
+    """Parse and validate. Every error names the file and the dotted key."""
+    data = parse(text, source)
+    _reject_unknown(data, ("cluster", "cluster_nodes", "technologies"), source, "")
+
+    cluster = _mapping(_require(data, "cluster", source, "cluster.type"), source, "cluster")
+    _reject_unknown(cluster, ("type",), source, "cluster")
+    cluster_type = _require(cluster, "type", source, "cluster.type")
+    if cluster_type not in CLUSTER_TYPES:
+        _at(source, "", f"cluster.type must be one of [{' '.join(CLUSTER_TYPES)}] "
+                        f"(got {cluster_type!r})")
+
+    nodes = _mapping(
+        _require(data, "cluster_nodes", source, "cluster_nodes"), source, "cluster_nodes"
+    )
+    if CONTROL_ROLE not in nodes:
+        _at(source, "", f"cluster_nodes must define '{CONTROL_ROLE}' — the k8s and "
+                        f"dcos roles take their control node from it")
+    cluster_roles = [
+        _node_spec(block, role, source, f"cluster_nodes.{role}")
+        for role, block in nodes.items()
+    ]
+    control = next(s for s in cluster_roles if s.role == CONTROL_ROLE)
+    if control.count < 1:
+        _at(source, "", f"cluster_nodes.{CONTROL_ROLE}.count must be at least 1")
+
+    technologies = _mapping(data.get("technologies", {}), source, "technologies")
+    enabled, tech_roles = [], {}
+    for name, block in technologies.items():
+        dotted = f"technologies.{name}"
+        if name not in TECHNOLOGIES:
+            _at(source, "", f"unknown technology {name!r}; "
+                            f"known: {' '.join(TECHNOLOGIES)}")
+        _mapping(block, source, dotted)
+        _reject_unknown(block, ("enabled", "nodes"), source, dotted)
+        if not _bool(block, "enabled", source, f"{dotted}.enabled"):
+            # A disabled technology keeps its sizing in the file, unvalidated,
+            # so switching it back on does not mean retyping it.
+            continue
+        enabled.append(name)
+        if name in NODELESS_TECHNOLOGIES:
+            if "nodes" in block:
+                _at(source, "", f"{name} runs on the cluster and declares no nodes")
+            continue
+        if "nodes" not in block:
+            _at(source, "", f"{dotted} must declare nodes when enabled")
+        node_blocks = _mapping(block["nodes"], source, f"{dotted}.nodes")
+        if not node_blocks:
+            _at(source, "", f"{dotted} must declare nodes when enabled")
+        tech_roles[name] = [
+            _node_spec(spec, f"{name}-{node}", source, f"{dotted}.nodes.{node}")
+            for node, spec in node_blocks.items()
+        ]
+
+    if "hdfs" in enabled:
+        namenodes = [s for s in tech_roles["hdfs"] if s.role == "hdfs-namenode"]
+        if len(namenodes) != 1 or namenodes[0].count != 1:
+            _at(source, "", "hdfs has exactly one NameNode: "
+                            "technologies.hdfs.nodes.namenode.count must be 1")
+
+    return ClusterConfig(source, cluster_type, cluster_roles, tech_roles, enabled)
+
+
+def path_for(name: str):
+    return paths.CLUSTER_CONFIGS_DIR / f"{name}_cluster.yaml"
+
+
+def load(name: str) -> ClusterConfig:
+    """Read, parse and validate `cluster_configs/<name>_cluster.yaml`.
+
+    There is no fallback. The config is selected by name, so a typo must fail
+    naming what it looked for rather than silently building a default cluster.
+    """
+    path = path_for(name)
+    if not path.is_file():
+        available = sorted(
+            p.name[: -len("_cluster.yaml")]
+            for p in paths.CLUSTER_CONFIGS_DIR.glob("*_cluster.yaml")
+        ) if paths.CLUSTER_CONFIGS_DIR.is_dir() else []
+        die(f"no config at {path} (available: {', '.join(available) or 'none'})")
+    return from_text(path.read_text(), str(path))

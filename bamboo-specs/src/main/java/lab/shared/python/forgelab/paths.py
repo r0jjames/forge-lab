@@ -21,7 +21,9 @@ SPECS_ROOT = REPO_ROOT / "bamboo-specs"
 LAB_DIR = SHARED_DIR.parent
 
 TF_DIR = SHARED_DIR / "terraform"
-CLUSTERS_DIR = SHARED_DIR / "clusters"
+# <repo>/cluster_configs — committed input, unlike the generated registry, so
+# this stays repo-relative: every Bamboo checkout carries it.
+CLUSTER_CONFIGS_DIR = REPO_ROOT / "cluster_configs"
 ANSIBLE_DIR = SHARED_DIR / "ansible"
 ANSIBLE_CFG = ANSIBLE_DIR / "ansible.cfg"
 SITE_YML = ANSIBLE_DIR / "site.yml"
