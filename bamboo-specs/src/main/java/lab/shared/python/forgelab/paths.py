@@ -15,6 +15,11 @@ SHARED_DIR = Path(__file__).resolve().parents[2]
 # .../<repo>/bamboo-specs/src/main/java/lab/shared -> <repo>
 REPO_ROOT = SHARED_DIR.parents[5]
 
+# <repo>/bamboo-specs — Maven's project root. `mvn exec:java` publishes from here.
+SPECS_ROOT = REPO_ROOT / "bamboo-specs"
+# .../java/lab — one directory per plan. publish_specs.py discovers specs under it.
+LAB_DIR = SHARED_DIR.parent
+
 TF_DIR = SHARED_DIR / "terraform"
 CLUSTERS_DIR = SHARED_DIR / "clusters"
 ANSIBLE_DIR = SHARED_DIR / "ansible"
@@ -24,6 +29,9 @@ INV_DIR = ANSIBLE_DIR / "inventory"
 
 FORGELAB_HOME = Path.home() / ".forgelab"
 SSH_KEY = FORGELAB_HOME / "id_ed25519"
+# Bamboo personal access token, used only to publish plans. Same home, same
+# 0600 posture as the cluster credentials files.
+BAMBOO_PAT = FORGELAB_HOME / "bamboo_pat"
 SSH_CONF_DIR = FORGELAB_HOME / "ssh_config.d"
 # One line: where the cluster registry lives on this host. See registry_dir().
 REGISTRY_POINTER = FORGELAB_HOME / "registry_dir"

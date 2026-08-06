@@ -39,3 +39,16 @@ def test_the_environment_beats_the_pointer(host, tmp_path, monkeypatch):
 def test_repo_root_is_the_checkout_root():
     assert (paths.REPO_ROOT / "Makefile").is_file()
     assert paths.SHARED_DIR == Path(paths.__file__).resolve().parents[2]
+
+
+def test_lab_dir_is_the_plan_root():
+    assert paths.LAB_DIR.name == "lab"
+    assert (paths.LAB_DIR / "provisioncluster").is_dir()
+
+
+def test_specs_root_is_the_maven_project():
+    assert (paths.SPECS_ROOT / "pom.xml").is_file()
+
+
+def test_bamboo_pat_sits_with_the_other_host_secrets():
+    assert paths.BAMBOO_PAT == paths.FORGELAB_HOME / "bamboo_pat"
