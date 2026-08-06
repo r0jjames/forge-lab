@@ -7,6 +7,11 @@ DevOps practice.
 
 Design source of truth: [`docs/superpowers/specs/2026-07-23-forge-lab-design.md`](docs/superpowers/specs/2026-07-23-forge-lab-design.md).
 
+Day-to-day guides: [`docs/provision-usage.md`](docs/provision-usage.md) for
+running the Provision plan and checking what installed;
+[`docs/using-cluster-addons.md`](docs/using-cluster-addons.md) for using
+Keycloak, HDFS, OpenSearch and k9s once a cluster is up.
+
 ## What is this
 
 Everything in this repo exists to answer one question repeatedly, on demand:
