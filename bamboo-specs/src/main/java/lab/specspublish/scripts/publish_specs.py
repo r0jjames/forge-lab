@@ -64,8 +64,11 @@ def write_credentials(token: str, dest: Path) -> Path:
 
     Opened with the mode already restricted rather than write_text() + chmod():
     the latter leaves a world-readable window on a file holding a live token.
+    Also fchmod on the open fd to ensure 0600 holds when overwriting an existing
+    file at a looser mode.
     """
     handle = os.open(dest, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    os.fchmod(handle, 0o600)
     with os.fdopen(handle, "w") as out:
         out.write(render_credentials(token))
     return dest

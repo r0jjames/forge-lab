@@ -77,5 +77,7 @@ def test_credentials_are_written_owner_only(tmp_path):
 def test_credentials_overwrite_an_existing_file(tmp_path):
     dest = tmp_path / ".credentials"
     dest.write_text("token=stale\n")
+    dest.chmod(0o644)  # Start with a looser mode
     publish_specs.write_credentials("fresh", dest)
     assert dest.read_text() == "token=fresh\n"
+    assert oct(dest.stat().st_mode)[-3:] == "600"
