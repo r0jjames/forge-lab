@@ -8,7 +8,7 @@ It assumes a cluster is already up. For how provisioning itself works, see
 were built, see `docs/superpowers/specs/2026-08-03-cluster-addons-design.md`.
 
 Everywhere below, `<cluster>` is the cluster name (`lab1` in the examples)
-and `<cluster>-mgmt-1`, `<cluster>-data-1`, `<cluster>-opensearch-1` are SSH
+and `<cluster>-mgmt-1`, `<cluster>-namenode-1`, `<cluster>-opensearch-1` are SSH
 host aliases, not literal IPs — see "Where things live" for how those
 resolve.
 
@@ -68,29 +68,33 @@ regardless of the `addons` list — there's no flag that turns it off.
 
 One consequence worth knowing before you reach for `ADDONS=`: disabling
 `hdfs` or `opensearch` doesn't just skip their Ansible role, it zeroes the
-Terraform count for the VM role that addon owns (`data` for hdfs,
-`opensearch` for opensearch). A cluster provisioned with `ADDONS=keycloak`
-builds no `data` or `opensearch` VMs at all — not empty ones, none. Keycloak
+Terraform count for the VM roles that addon owns (`namenode` and `datanode`
+for hdfs, `opensearch` for opensearch). A cluster provisioned with
+`ADDONS=keycloak` builds no HDFS or `opensearch` VMs at all — not empty ones,
+none. The NameNode count is derived from `datanode_count`, so hdfs is one
+switch, not two. Keycloak
 owns no VM role of its own; it runs on the k8s cluster the mgmt/compute
 nodes already form.
 
 ## 2. Where things live
 
 Node names are stable across provisions because the inventory is
-natural-sorted (`data-2` always sorts before `data-10`), so you can rely on
+natural-sorted (`datanode-2` always sorts before `datanode-10`), so you can
+rely on
 these regardless of which run produced the cluster:
 
 | Node | What's there |
 | --- | --- |
 | `<cluster>-mgmt-1` | Kubernetes control plane, k9s, Keycloak (via a NodePort on the k8s cluster) |
-| `<cluster>-data-1` | HDFS NameNode (always node 1; nodes 2+ are DataNode-only) |
+| `<cluster>-namenode-1` | HDFS NameNode, and nothing else — it stores metadata, not blocks |
+| `<cluster>-datanode-1..N` | HDFS DataNodes (blocks live here; the NameNode is not one of them) |
 | `<cluster>-opensearch-1` | OpenSearch node + Dashboards (always node 1; nodes 2 and 3 run OpenSearch but no UI) |
 
 To get the actual IPs for a cluster, either read
 `cluster_registered/<cluster>_cluster_info.yml` (written by provision as its
 last step — it lists every node, its role, and its address) or just SSH by
 name. Provisioning writes `~/.forgelab/ssh_config.d/<cluster>.conf`
-(included from `~/.ssh/config`), so `ssh lab1-mgmt-1`, `ssh lab1-data-1`,
+(included from `~/.ssh/config`), so `ssh lab1-mgmt-1`, `ssh lab1-namenode-1`,
 `ssh lab1-opensearch-1`, etc. all work out of the box as the `ubuntu` user
 with the lab's key — no need to look up an IP first. If you do want the raw
 address for a `curl` from your own machine, `ssh <cluster>-mgmt-1 "hostname
@@ -169,19 +173,19 @@ or user rather than using the seeded ones:
 ## 5. HDFS
 
 ```
-ssh <cluster>-data-1
+ssh <cluster>-namenode-1
 hdfs dfs -ls /
 ```
 
-The NameNode UI is at `http://<cluster>-data-1:9870`. `fs.defaultFS` is
-`hdfs://<cluster>-data-1:8020` — that's the URI any client (including
+The NameNode UI is at `http://<cluster>-namenode-1:9870`. `fs.defaultFS` is
+`hdfs://<cluster>-namenode-1:8020` — that's the URI any client (including
 `hdfs dfs` run from a different node) needs to talk to this filesystem.
 
 `/user/app` already exists and is owned by `ubuntu`, ready for an
 application to use without any setup:
 
 ```
-# from data-1, or any node with the hdfs client and this fs.defaultFS configured
+# from namenode-1, or any node with the hdfs client and this fs.defaultFS configured
 echo "hello" | hdfs dfs -put -f - /user/app/hello.txt
 hdfs dfs -cat /user/app/hello.txt
 hdfs dfs -get /user/app/hello.txt ./hello.txt
@@ -217,7 +221,7 @@ there for an OpenSearch password, you will not find one, because none is
 ever generated. Both the API and Dashboards are open HTTP.
 
 Fluent Bit ships logs into a daily index, `forgelab-logs-YYYY.MM.DD`, from
-every mgmt, compute, and data node (the opensearch nodes themselves are
+every mgmt, compute and HDFS node (the opensearch nodes themselves are
 deliberately excluded — see below). One index per day, all matching
 `forgelab-logs*`.
 
@@ -242,7 +246,8 @@ check `_cat/indices` (below) before assuming something's broken.
 ### OpenSearch's own logs aren't in OpenSearch
 
 The three opensearch nodes ship no logs of their own by design (Fluent Bit
-only runs on mgmt/compute/data), so if OpenSearch or Dashboards itself is
+only runs on mgmt/compute/namenode/datanode), so if OpenSearch or Dashboards
+itself is
 misbehaving, you will not find anything useful searching `forgelab-logs*` —
 there's nothing there about the OpenSearch service itself. Its logs are
 plain files on the node:
@@ -298,7 +303,7 @@ and logging), the shape is:
   is enough; create a new one in the realm if the app needs its own client
   id or a confidential client with a secret.
 - **Storage**: write application data under
-  `hdfs://<cluster>-data-1:8020/user/app` (already there, already owned by
+  `hdfs://<cluster>-namenode-1:8020/user/app` (already there, already owned by
   `ubuntu`), or create a new path under `/user` for a dedicated identity.
 - **Logging**: ship application logs to OpenSearch at
   `http://<cluster>-opensearch-1:9200` directly — an app doing this itself
@@ -368,8 +373,8 @@ ssh <cluster>-mgmt-1 "sudo systemctl stop fluent-bit && sudo rm -f /var/lib/flue
 That path is confirmed live on a running cluster (Fluent Bit's SQLite
 position store shows up there as `forgelab.db`, `forgelab.db-shm`, and
 `forgelab.db-wal` — remove all three, the glob above catches them). Do this
-on whichever node's Fluent Bit you're trying to reset — mgmt, compute, or
-data — the same three files exist on each.
+on whichever node's Fluent Bit you're trying to reset — mgmt, compute,
+namenode or datanode — the same three files exist on each.
 
 ### `make provision` failing on an empty OpenSearch index
 

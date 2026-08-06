@@ -121,13 +121,17 @@ exist, so deprovision before re-running the same name.
 
 The addon list gates the Ansible roles *and* zeroes the Terraform node count
 of every disabled addon's VM role, so sizing and enablement cannot disagree.
-Disabling `hdfs` doesn't build empty data nodes — it builds none.
+Disabling `hdfs` doesn't build empty HDFS nodes — it builds none.
 
-| Addon        | VM role it owns | Nodes (per `lab1.tfvars`)                                                  |
-|--------------|-----------------|----------------------------------------------------------------------------|
-| `hdfs`       | `data`          | 3                                                                          |
-| `opensearch` | `opensearch`    | 3                                                                          |
-| `keycloak`   | *none*          | 0 — it runs as pods on the k8s cluster the mgmt/compute nodes already form |
+| Addon        | VM roles it owns       | Nodes (per `lab1.tfvars`)                                                  |
+|--------------|------------------------|----------------------------------------------------------------------------|
+| `hdfs`       | `namenode`, `datanode` | 1 + 3                                                                      |
+| `opensearch` | `opensearch`           | 3                                                                          |
+| `keycloak`   | *none*                 | 0 — it runs as pods on the k8s cluster the mgmt/compute nodes already form |
+
+The NameNode count is not configurable: Terraform derives one NameNode
+whenever `datanode_count` is above zero, because non-HA HDFS has exactly one.
+Turning `hdfs` off zeroes `datanode_count`, which removes the NameNode too.
 
 So with `lab1.tfvars` (1 mgmt + 2 compute):
 
@@ -135,14 +139,14 @@ So with `lab1.tfvars` (1 mgmt + 2 compute):
 |----------------------------|-----|
 | `none`                     | 3   |
 | `keycloak`                 | 3   |
-| `hdfs`                     | 6   |
-| `hdfs,keycloak,opensearch` | 9   |
+| `hdfs`                     | 7   |
+| `hdfs,keycloak,opensearch` | 10  |
 
-A full 9-VM `lab1` reserves 40G of RAM (4 + 2×3 + 3×4 + 3×6). Check the host
-has it before starting.
+A full 10-VM `lab1` reserves 44G of RAM (4 + 2×3 + 4 + 3×4 + 3×6). Check the
+host has it before starting.
 
-Note that `kubectl get nodes` on a 9-VM cluster shows **3** nodes. Only mgmt
-and compute join Kubernetes; the data and opensearch VMs are plain hosts
+Note that `kubectl get nodes` on a 10-VM cluster shows **3** nodes. Only mgmt
+and compute join Kubernetes; the HDFS and opensearch VMs are plain hosts
 running systemd services. That is correct, not a partial install.
 
 ## 4. What a successful run produces
@@ -270,10 +274,11 @@ A JSON body containing `access_token` means the whole chain works.
 
 ### HDFS
 
-The NameNode is always `data-1`; nodes 2 and up are DataNode-only.
+The NameNode is `namenode-1` and runs no DataNode; blocks live on
+`datanode-1` and up.
 
 ```
-ssh lab1-data-1 "hdfs dfsadmin -report | head -12"
+ssh lab1-namenode-1 "hdfs dfsadmin -report | head -12"
 ```
 
 ```
@@ -288,22 +293,22 @@ platform` on the first line is normal and not a failure.
 Filesystem responding, and the seeded path present:
 
 ```
-ssh lab1-data-1 "hdfs dfs -ls /user/app"
+ssh lab1-namenode-1 "hdfs dfs -ls /user/app"
 ```
 
 A write/read round trip, if you want more than liveness:
 
 ```
-ssh lab1-data-1 "echo hello | hdfs dfs -put -f - /user/app/hello.txt && hdfs dfs -cat /user/app/hello.txt"
+ssh lab1-namenode-1 "echo hello | hdfs dfs -put -f - /user/app/hello.txt && hdfs dfs -cat /user/app/hello.txt"
 ```
 
 Per-node daemons, when the report shows fewer datanodes than expected:
 
 ```
-for n in 1 2 3; do ssh lab1-data-$n "systemctl is-active hadoop-datanode"; done
+for n in 1 2 3; do ssh lab1-datanode-$n "systemctl is-active hdfs-datanode"; done
 ```
 
-NameNode UI: `http://<data-1-ip>:9870`
+NameNode UI: `http://<namenode-1-ip>:9870`
 
 ### OpenSearch and Dashboards
 

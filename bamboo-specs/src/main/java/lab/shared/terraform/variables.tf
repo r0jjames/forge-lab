@@ -62,21 +62,35 @@ variable "addons" {
   default     = ""
   description = "Comma-separated addon names. provision.py derives node counts from it; terraform only records it."
 }
-variable "data_count" {
+variable "datanode_count" {
   type    = number
   default = 0
 }
-variable "data_cpu" {
+variable "datanode_cpu" {
   type    = number
   default = 2
 }
-variable "data_mem" {
+variable "datanode_mem" {
   type    = string
   default = "4G"
 }
-variable "data_disk" {
+variable "datanode_disk" {
   type    = string
   default = "40G"
+}
+# No namenode_count: main.tf derives one NameNode whenever there are DataNodes.
+variable "namenode_cpu" {
+  type    = number
+  default = 2
+}
+variable "namenode_mem" {
+  type    = string
+  default = "4G"
+}
+# Metadata only — the NameNode stores no blocks.
+variable "namenode_disk" {
+  type    = string
+  default = "20G"
 }
 variable "opensearch_count" {
   type    = number

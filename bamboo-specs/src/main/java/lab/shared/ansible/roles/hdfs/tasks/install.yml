@@ -62,7 +62,7 @@
     - "{{ hdfs_home }}"
 
 # unarchive's remote_src download used Ansible's default 10s socket-read
-# timeout with no retries. Three data nodes pulling the ~1GB tarball at once
+# timeout with no retries. Four HDFS nodes pulling the ~1GB tarball at once
 # through the same host NAT stalls past 10s and the task dies mid-transfer.
 # get_url's own `timeout:` is the same kind of socket-read timeout, just
 # raised generously, and `until`/`retries`/`delay` re-run the whole download
@@ -118,9 +118,19 @@
     dest: /usr/local/bin/hdfs
     mode: "0755"
 
-- name: Systemd units
+# One unit per host, chosen by the group its name puts it in. A datanode VM
+# never receives the namenode unit, so it cannot start one on reboot and squat
+# the real NameNode's ports.
+- name: NameNode systemd unit
   ansible.builtin.template:
-    src: "{{ item }}.j2"
-    dest: "/etc/systemd/system/{{ item }}"
+    src: hdfs-namenode.service.j2
+    dest: /etc/systemd/system/hdfs-namenode.service
     mode: "0644"
-  loop: [hdfs-namenode.service, hdfs-datanode.service]
+  when: inventory_hostname in groups['namenode']
+
+- name: DataNode systemd unit
+  ansible.builtin.template:
+    src: hdfs-datanode.service.j2
+    dest: /etc/systemd/system/hdfs-datanode.service
+    mode: "0644"
+  when: inventory_hostname in groups['datanode']

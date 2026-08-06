@@ -148,10 +148,10 @@ def live_datanodes(report: str) -> int:
     return int(match.group(1)) if match else 0
 
 
-def _verify_hdfs(data_ip: str, expected: int):
-    print(f"==> verify: {expected} live datanodes on {data_ip}")
+def _verify_hdfs(namenode_ip: str, expected: int):
+    print(f"==> verify: {expected} live datanodes on {namenode_ip}")
     for _ in range(ATTEMPTS):
-        result = _ssh(data_ip, "hdfs dfsadmin -report")
+        result = _ssh(namenode_ip, "hdfs dfsadmin -report")
         if result.returncode == 0 and live_datanodes(result.stdout) >= expected:
             break
         time.sleep(INTERVAL_SECONDS)
@@ -161,7 +161,7 @@ def _verify_hdfs(data_ip: str, expected: int):
     # A report can be healthy while writes fail — prove a roundtrip too.
     token = "forgelab-verify"
     result = _ssh(
-        data_ip,
+        namenode_ip,
         f"printf '{token}' | hdfs dfs -put -f - {HDFS_APP_DIR}/verify.txt "
         f"&& hdfs dfs -cat {HDFS_APP_DIR}/verify.txt",
     )
@@ -270,10 +270,13 @@ def main(argv):
     if "keycloak" in addons:
         _verify_keycloak(mgmt_ip, secrets_values.get("keycloak_app_user_password", ""))
     if "hdfs" in addons:
-        data_ip = inventory.first_ip(text, "data")
-        if not data_ip:
-            proc.die("hdfs is enabled but the inventory has no data hosts")
-        _verify_hdfs(data_ip, len(inventory.group_ips(text, "data")))
+        namenode_ip = inventory.first_ip(text, "namenode")
+        if not namenode_ip:
+            proc.die("hdfs is enabled but the inventory has no namenode host")
+        datanodes = len(inventory.group_ips(text, "datanode"))
+        if not datanodes:
+            proc.die("hdfs is enabled but the inventory has no datanode hosts")
+        _verify_hdfs(namenode_ip, datanodes)
     if "opensearch" in addons:
         node_ip = inventory.first_ip(text, "opensearch")
         if not node_ip:

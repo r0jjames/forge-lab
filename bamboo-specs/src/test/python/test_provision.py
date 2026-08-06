@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 
 import provision
-from forgelab import planvars
+from forgelab import inventory, planvars
 from forgelab.multipass import Node
 from forgelab.proc import LabError
 
@@ -30,11 +30,19 @@ def lab(tmp_path, monkeypatch):
         def apply_retry(self, *args):
             calls.append(("tf-apply", *args))
             # The VMs only exist once terraform has applied — the inventory is
-            # rendered from backend state afterwards.
+            # rendered from backend state afterwards. A zeroed count means the
+            # addon is off and terraform built none of that role, so the fake
+            # honours the same overrides the real apply gets.
             existing["vms"] = [
                 Node("lab1-mgmt-1", ["192.168.252.10"]),
                 Node("lab1-compute-1", ["192.168.252.11"]),
             ]
+            if "datanode_count=0" not in args:
+                existing["vms"] += [
+                    Node("lab1-namenode-1", ["192.168.252.20"]),
+                    Node("lab1-datanode-1", ["192.168.252.21"]),
+                    Node("lab1-datanode-2", ["192.168.252.22"]),
+                ]
 
     tfvars = tmp_path / "lab1.tfvars"
     tfvars.write_text('cluster_type  = "k8s"\nmgmt_mem      = "4G"\n')
@@ -144,6 +152,30 @@ def test_writes_the_cluster_info_file(lab):
     assert "mem: 4G" in info
 
 
+def test_hdfs_vms_land_in_their_own_inventory_groups(lab):
+    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
+    provision.main(["lab1"])
+    text = (lab.inv_dir / "lab1.ini").read_text()
+    assert inventory.group_ips(text, "namenode") == ["192.168.252.20"]
+    assert inventory.group_ips(text, "datanode") == [
+        "192.168.252.21",
+        "192.168.252.22",
+    ]
+
+
+def test_the_cluster_info_tells_the_namenode_from_the_datanodes(lab):
+    lab.tfvars.write_text(
+        'cluster_type = "k8s"\naddons = "hdfs"\n'
+        'namenode_disk = "20G"\ndatanode_disk = "40G"\n'
+    )
+    provision.main(["lab1"])
+    info = (lab.registry_dir / "lab1_cluster_info.yml").read_text()
+    assert "- name: lab1-namenode-1\n    role: namenode\n" in info
+    assert "- name: lab1-datanode-1\n    role: datanode\n" in info
+    assert "disk: 20G" in info
+    assert "disk: 40G" in info
+
+
 def test_leaves_no_cluster_info_when_verify_fails(lab, monkeypatch):
     def fail_on_verify(*args, **kwargs):
         calls = [str(a) for a in args]
@@ -236,7 +268,7 @@ def test_addons_argument_overrides_the_tfvars_file(lab, monkeypatch):
 
 def test_node_count_overrides_zeroes_every_role_when_no_addons():
     assert provision.node_count_overrides([]) == [
-        "-var", "data_count=0", "-var", "opensearch_count=0",
+        "-var", "datanode_count=0", "-var", "opensearch_count=0",
     ]
 
 
@@ -251,7 +283,7 @@ def test_node_count_overrides_is_empty_when_every_role_is_wanted():
 def test_keycloak_alone_builds_no_extra_vms():
     """Keycloak runs on the k8s cluster; it needs no VM role of its own."""
     assert provision.node_count_overrides(["keycloak"]) == [
-        "-var", "data_count=0", "-var", "opensearch_count=0",
+        "-var", "datanode_count=0", "-var", "opensearch_count=0",
     ]
 
 
@@ -259,7 +291,7 @@ def test_apply_zeroes_the_vm_roles_of_disabled_addons(lab):
     lab.tfvars.write_text('cluster_type = "k8s"\naddons = ""\n')
     provision.main(["lab1"])
     apply = next(c for c in lab.calls if c[0] == "tf-apply")
-    assert "data_count=0" in apply
+    assert "datanode_count=0" in apply
     assert "opensearch_count=0" in apply
 
 
@@ -267,5 +299,5 @@ def test_apply_keeps_the_vm_roles_of_enabled_addons(lab):
     lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,opensearch"\n')
     provision.main(["lab1"])
     apply = next(c for c in lab.calls if c[0] == "tf-apply")
-    assert "data_count=0" not in apply
+    assert "datanode_count=0" not in apply
     assert "opensearch_count=0" not in apply

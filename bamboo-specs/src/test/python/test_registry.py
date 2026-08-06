@@ -117,6 +117,21 @@ def test_reads_role_and_sizing_for_each_node():
     assert (compute.role, compute.disk) == ("compute", "20G")
 
 
+def test_tells_the_namenode_apart_from_the_datanodes():
+    """The HDFS roles are readable straight off the name: no separate lookup."""
+    sizing = {
+        "namenode_cpu": "2", "namenode_mem": "4G", "namenode_disk": "20G",
+        "datanode_cpu": "2", "datanode_mem": "4G", "datanode_disk": "40G",
+    }
+    hosts = [
+        ("lab1-namenode-1", "192.168.252.20"),
+        ("lab1-datanode-1", "192.168.252.21"),
+    ]
+    namenode, datanode = registry.nodes_from(hosts, sizing)
+    assert (namenode.role, namenode.disk) == ("namenode", "20G")
+    assert (datanode.role, datanode.disk) == ("datanode", "40G")
+
+
 def test_omits_sizing_the_tfvars_does_not_carry():
     text = registry.render(
         "lab1", "k8s", "2026-08-03T14:22:11Z", registry.nodes_from(HOSTS, {}), []

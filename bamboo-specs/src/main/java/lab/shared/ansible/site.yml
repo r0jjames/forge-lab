@@ -26,8 +26,8 @@
     - role: keycloak
       when: "'keycloak' in (addons | default('')).split(',')"
 
-- name: HDFS on the data nodes
-  hosts: data
+- name: HDFS on the namenode and datanodes
+  hosts: hdfs_nodes
   become: true
   roles:
     - role: hdfs
@@ -43,9 +43,10 @@
 # Hand the component facts the roles set back to provision.py, which renders
 # them into cluster_registered/<cluster>_cluster_info.yml. forgelab_components
 # is set with set_fact, which is host-scoped, and roles run on different host
-# groups (k8s on mgmt+compute, keycloak on mgmt[0], hdfs on data, opensearch on
-# opensearch) -- so no single host has the full picture. Aggregate across every
-# host in the (naturally sorted, so stable) inventory before writing.
+# groups (k8s on mgmt+compute, keycloak on mgmt[0], hdfs on hdfs_nodes,
+# opensearch on opensearch) -- so no single host has the full picture.
+# Aggregate across every host in the (naturally sorted, so stable) inventory
+# before writing.
 - name: Record installed components
   hosts: mgmt[0]
   gather_facts: false

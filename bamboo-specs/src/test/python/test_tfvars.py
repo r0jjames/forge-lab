@@ -72,7 +72,7 @@ def test_parse_addons_ignores_a_commented_line():
 
 
 def test_parse_still_reads_the_new_sizing_scalars():
-    text = 'addons = "hdfs"\ndata_mem = "4G"\ndata_count = 3\n'
+    text = 'addons = "hdfs"\ndatanode_mem = "4G"\ndatanode_count = 3\n'
     parsed = tfvars_mod.parse(text)
-    assert parsed["data_mem"] == "4G"
-    assert parsed["data_count"] == "3"
+    assert parsed["datanode_mem"] == "4G"
+    assert parsed["datanode_count"] == "3"

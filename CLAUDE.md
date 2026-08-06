@@ -119,6 +119,12 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
   sizing and enablement cannot disagree. k9s is not an addon — it ships with the
   k8s role. Addon secrets live in `~/.forgelab/<cluster>-credentials.yml` (0600)
   and never in `cluster_registered/`
+- A VM's role is its name: `<cluster>-<role>-<n>`, and `<role>` is also the
+  ansible group and the `<role>_cpu`/`_mem`/`_disk` prefix in the tfvars, which
+  is how `registry.nodes_from` fills in `cluster_registered/`. Rename a role and
+  all four move together. hdfs owns two — `namenode` (metadata only, no
+  DataNode) and `datanode` — but only `datanode_count` is configurable:
+  terraform derives one NameNode from it, since non-HA HDFS has exactly one
 - Plan variables are validated in `forgelab/planvars.py` and nowhere else. Their
   Bamboo defaults are placeholders documenting the legal values (Bamboo has no
   hint field), so each default is deliberately not a legal value and means "no

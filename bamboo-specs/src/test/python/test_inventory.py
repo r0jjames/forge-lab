@@ -9,20 +9,33 @@ COMPUTE = [
     Node("lab1-compute-1", ["192.168.252.11"]),
     Node("lab1-compute-2", ["192.168.252.12"]),
 ]
-DATA = [
-    Node("lab1-data-1", ["192.168.252.21"]),
-    Node("lab1-data-2", ["192.168.252.22"]),
+NAMENODE = [Node("lab1-namenode-1", ["192.168.252.20"])]
+DATANODE = [
+    Node("lab1-datanode-1", ["192.168.252.21"]),
+    Node("lab1-datanode-2", ["192.168.252.22"]),
 ]
 OPENSEARCH = [Node("lab1-opensearch-1", ["192.168.252.31"])]
 
 
 def bare(cluster="lab1"):
-    """A cluster with no addons: the data and opensearch groups are empty."""
-    return {"mgmt": MGMT, "compute": COMPUTE, "data": [], "opensearch": []}
+    """No addons: the namenode, datanode and opensearch groups are empty."""
+    return {
+        "mgmt": MGMT,
+        "compute": COMPUTE,
+        "namenode": [],
+        "datanode": [],
+        "opensearch": [],
+    }
 
 
 def loaded():
-    return {"mgmt": MGMT, "compute": COMPUTE, "data": DATA, "opensearch": OPENSEARCH}
+    return {
+        "mgmt": MGMT,
+        "compute": COMPUTE,
+        "namenode": NAMENODE,
+        "datanode": DATANODE,
+        "opensearch": OPENSEARCH,
+    }
 
 
 def test_render_produces_the_expected_inventory():
@@ -34,13 +47,19 @@ def test_render_produces_the_expected_inventory():
         "lab1-compute-1 ansible_host=192.168.252.11\n"
         "lab1-compute-2 ansible_host=192.168.252.12\n"
         "\n"
-        "[data]\n"
+        "[namenode]\n"
+        "\n"
+        "[datanode]\n"
         "\n"
         "[opensearch]\n"
         "\n"
         "[k8s_nodes:children]\n"
         "mgmt\n"
         "compute\n"
+        "\n"
+        "[hdfs_nodes:children]\n"
+        "namenode\n"
+        "datanode\n"
         "\n"
         "[all:vars]\n"
         "ansible_user=ubuntu\n"
@@ -52,9 +71,10 @@ def test_render_produces_the_expected_inventory():
 
 
 def test_render_emits_empty_groups_so_plays_resolve_to_zero_hosts():
-    """A `hosts: data` play must find an empty group, not an unknown one."""
+    """A `hosts: datanode` play must find an empty group, not an unknown one."""
     text = inventory.render("lab1", bare())
-    assert "[data]\n" in text
+    assert "[namenode]\n" in text
+    assert "[datanode]\n" in text
     assert "[opensearch]\n" in text
 
 
@@ -67,8 +87,9 @@ def test_parse_hosts_reads_every_group():
         ("lab1-mgmt-1", "192.168.252.10"),
         ("lab1-compute-1", "192.168.252.11"),
         ("lab1-compute-2", "192.168.252.12"),
-        ("lab1-data-1", "192.168.252.21"),
-        ("lab1-data-2", "192.168.252.22"),
+        ("lab1-namenode-1", "192.168.252.20"),
+        ("lab1-datanode-1", "192.168.252.21"),
+        ("lab1-datanode-2", "192.168.252.22"),
         ("lab1-opensearch-1", "192.168.252.31"),
     ]
 
@@ -98,18 +119,19 @@ def test_find_duplicate_ips_is_empty_for_a_healthy_cluster():
 
 def test_first_ip_returns_the_first_host_of_the_named_group():
     text = inventory.render("lab1", loaded())
-    assert inventory.first_ip(text, "data") == "192.168.252.21"
+    assert inventory.first_ip(text, "namenode") == "192.168.252.20"
+    assert inventory.first_ip(text, "datanode") == "192.168.252.21"
     assert inventory.first_ip(text, "opensearch") == "192.168.252.31"
 
 
 def test_first_ip_is_empty_for_an_empty_or_absent_group():
     text = inventory.render("lab1", bare())
-    assert inventory.first_ip(text, "data") == ""
+    assert inventory.first_ip(text, "datanode") == ""
     assert inventory.first_ip(text, "nosuchgroup") == ""
 
 
 def test_group_ips_returns_every_host_of_the_group_in_order():
-    assert inventory.group_ips(inventory.render("lab1", loaded()), "data") == [
+    assert inventory.group_ips(inventory.render("lab1", loaded()), "datanode") == [
         "192.168.252.21",
         "192.168.252.22",
     ]
@@ -149,16 +171,17 @@ def test_assert_unique_ips_rejects_duplicates(tmp_path):
 
 
 def test_render_sorts_nodes_within_a_group_regardless_of_input_order():
-    """multipass hands nodes back in an arbitrary order; groups['data'][0]
-    (e.g. where the NameNode goes) must be a deterministic function of the
-    name, not of backend enumeration order."""
+    """multipass hands nodes back in an arbitrary order; the first host of a
+    group (e.g. groups['opensearch'][0], which also runs Dashboards) must be a
+    deterministic function of the name, not of backend enumeration order."""
     scrambled = {
         "mgmt": MGMT,
         "compute": COMPUTE,
-        "data": [
-            Node("lab1-data-3", ["192.168.252.23"]),
-            Node("lab1-data-1", ["192.168.252.21"]),
-            Node("lab1-data-2", ["192.168.252.22"]),
+        "namenode": NAMENODE,
+        "datanode": [
+            Node("lab1-datanode-3", ["192.168.252.23"]),
+            Node("lab1-datanode-1", ["192.168.252.21"]),
+            Node("lab1-datanode-2", ["192.168.252.22"]),
         ],
         "opensearch": [
             Node("lab1-opensearch-2", ["192.168.252.32"]),
@@ -166,7 +189,7 @@ def test_render_sorts_nodes_within_a_group_regardless_of_input_order():
         ],
     }
     text = inventory.render("lab1", scrambled)
-    assert inventory.group_ips(text, "data") == [
+    assert inventory.group_ips(text, "datanode") == [
         "192.168.252.21",
         "192.168.252.22",
         "192.168.252.23",
@@ -178,28 +201,39 @@ def test_render_sorts_nodes_within_a_group_regardless_of_input_order():
 
 
 def test_render_natural_sorts_double_digit_node_numbers():
-    """Plain string sort would put '-data-10' before '-data-2'."""
+    """Plain string sort would put '-datanode-10' before '-datanode-2'."""
     nodes = {
         "mgmt": MGMT,
         "compute": COMPUTE,
-        "data": [
-            Node("lab1-data-10", ["192.168.252.30"]),
-            Node("lab1-data-2", ["192.168.252.22"]),
-            Node("lab1-data-1", ["192.168.252.21"]),
+        "namenode": NAMENODE,
+        "datanode": [
+            Node("lab1-datanode-10", ["192.168.252.30"]),
+            Node("lab1-datanode-2", ["192.168.252.22"]),
+            Node("lab1-datanode-1", ["192.168.252.21"]),
         ],
         "opensearch": [],
     }
     text = inventory.render("lab1", nodes)
-    assert inventory.parse_hosts(text)[3:6] == [
-        ("lab1-data-1", "192.168.252.21"),
-        ("lab1-data-2", "192.168.252.22"),
-        ("lab1-data-10", "192.168.252.30"),
+    assert inventory.parse_hosts(text)[4:7] == [
+        ("lab1-datanode-1", "192.168.252.21"),
+        ("lab1-datanode-2", "192.168.252.22"),
+        ("lab1-datanode-10", "192.168.252.30"),
     ]
 
 
 def test_render_preserves_the_callers_group_order():
     """Sorting is within a group only; group order itself is untouched — it
-    is the caller's dict order (mgmt, compute, data, opensearch in provision.py)."""
+    is the caller's dict order (mgmt, compute, namenode, datanode, opensearch
+    in provision.py)."""
     text = inventory.render("lab1", loaded())
     headers = [line for line in text.splitlines() if line.startswith("[")]
-    assert headers == ["[mgmt]", "[compute]", "[data]", "[opensearch]", "[k8s_nodes:children]", "[all:vars]"]
+    assert headers == [
+        "[mgmt]",
+        "[compute]",
+        "[namenode]",
+        "[datanode]",
+        "[opensearch]",
+        "[k8s_nodes:children]",
+        "[hdfs_nodes:children]",
+        "[all:vars]",
+    ]

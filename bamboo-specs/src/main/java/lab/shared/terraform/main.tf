@@ -15,10 +15,20 @@ locals {
       cpus = var.compute_cpu, memory = var.compute_mem, disk = var.compute_disk
     }
   }
-  data_nodes = {
-    for i in range(var.data_count) :
-    "${var.cluster_name}-data-${i + 1}" => {
-      cpus = var.data_cpu, memory = var.data_mem, disk = var.data_disk
+  # Non-HA HDFS has exactly one NameNode, so this is derived rather than a
+  # variable that can only be set wrong. provision.py turns the hdfs addon off
+  # with `-var datanode_count=0`, which takes the NameNode with it.
+  namenode_count = var.datanode_count > 0 ? 1 : 0
+  namenode_nodes = {
+    for i in range(local.namenode_count) :
+    "${var.cluster_name}-namenode-${i + 1}" => {
+      cpus = var.namenode_cpu, memory = var.namenode_mem, disk = var.namenode_disk
+    }
+  }
+  datanode_nodes = {
+    for i in range(var.datanode_count) :
+    "${var.cluster_name}-datanode-${i + 1}" => {
+      cpus = var.datanode_cpu, memory = var.datanode_mem, disk = var.datanode_disk
     }
   }
   opensearch_nodes = {
@@ -41,7 +51,8 @@ module "vms" {
   nodes = merge(
     local.mgmt_nodes,
     local.compute_nodes,
-    local.data_nodes,
+    local.namenode_nodes,
+    local.datanode_nodes,
     local.opensearch_nodes,
   )
   image          = var.image

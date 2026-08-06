@@ -19,14 +19,18 @@ _NUM_RE = re.compile(r"(\d+)")
 # a VM that must never receive kubelet.
 K8S_GROUPS = ("mgmt", "compute")
 
+# Every VM the hdfs role touches. The role branches on which of the two a host
+# is in: the NameNode is not a DataNode, and vice versa.
+HDFS_GROUPS = ("namenode", "datanode")
+
 
 def _natural_key(name: str):
     """Split on digit runs so 'data-10' sorts after 'data-2', not before.
 
     multipass hands nodes back in an arbitrary order; several things depend
-    on being able to name the "first" node of a group (e.g. groups['data'][0]
-    is where the HDFS NameNode goes), so that first element must be a
-    deterministic function of the name alone, not backend enumeration order.
+    on being able to name the "first" node of a group (e.g. verify.py probes
+    groups['opensearch'][0]), so that first element must be a deterministic
+    function of the name alone, not backend enumeration order.
     """
     return [int(tok) if tok.isdigit() else tok for tok in _NUM_RE.split(name)]
 
@@ -46,6 +50,7 @@ def render(cluster: str, groups) -> str:
         lines += [f"{n.name} ansible_host={multipass.lan_ip(n)}" for n in ordered]
         lines.append("")
     lines += ["[k8s_nodes:children]", *K8S_GROUPS, ""]
+    lines += ["[hdfs_nodes:children]", *HDFS_GROUPS, ""]
     lines += [
         "[all:vars]",
         "ansible_user=ubuntu",

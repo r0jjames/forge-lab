@@ -84,8 +84,8 @@ DFS Remaining: 112233445566 (104.5 GB)
 -------------------------------------------------
 Live datanodes (3):
 
-Name: 192.168.252.21:9866 (lab1-data-1)
-Hostname: lab1-data-1
+Name: 192.168.252.21:9866 (lab1-datanode-1)
+Hostname: lab1-datanode-1
 Decommission Status : Normal
 """
 

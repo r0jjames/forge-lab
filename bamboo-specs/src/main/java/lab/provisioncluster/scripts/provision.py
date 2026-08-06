@@ -19,8 +19,10 @@ USAGE = "usage: provision.py <cluster_name> [cluster_type] [addons]"
 
 
 # Which addon owns which VM role. Keycloak owns none — it runs on the k8s
-# cluster the mgmt/compute nodes already form.
-ADDON_NODE_ROLES = {"hdfs": "data", "opensearch": "opensearch"}
+# cluster the mgmt/compute nodes already form. hdfs owns two roles but only
+# names `datanode` here: terraform derives the single NameNode from
+# datanode_count, so zeroing that one count removes both.
+ADDON_NODE_ROLES = {"hdfs": "datanode", "opensearch": "opensearch"}
 
 
 def node_count_overrides(addons) -> list:
@@ -75,7 +77,8 @@ def main(argv):
             {
                 "mgmt": multipass.list_vms(f"{cluster}-mgmt-"),
                 "compute": multipass.list_vms(f"{cluster}-compute-"),
-                "data": multipass.list_vms(f"{cluster}-data-"),
+                "namenode": multipass.list_vms(f"{cluster}-namenode-"),
+                "datanode": multipass.list_vms(f"{cluster}-datanode-"),
                 "opensearch": multipass.list_vms(f"{cluster}-opensearch-"),
             },
         )
