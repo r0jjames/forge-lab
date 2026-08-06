@@ -1,4 +1,4 @@
 output "node_names" {
-  description = "All VM names, mgmt nodes first"
-  value       = concat(keys(local.mgmt_nodes), keys(local.compute_nodes))
+  description = "All VM names, in config order"
+  value       = keys(var.nodes)
 }
