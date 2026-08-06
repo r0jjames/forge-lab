@@ -140,6 +140,16 @@ def _fail(source, lineno, message):
     die(f"{source}:{lineno}: {message}")
 
 
+def _strip_comment(raw: str) -> str:
+    """Drop a trailing comment. A '#' only opens one at line start or after
+    whitespace — a bare '#' inside a value is part of the value, as in real
+    YAML, so a value is never silently truncated."""
+    for index, char in enumerate(raw):
+        if char == "#" and (index == 0 or raw[index - 1] in " \t"):
+            return raw[:index].rstrip()
+    return raw.rstrip()
+
+
 def parse(text: str, source: str) -> dict:
     """Nested plain dicts from the accepted subset. Every scalar is a str.
 
@@ -163,7 +173,7 @@ def parse(text: str, source: str) -> dict:
         if stripped.startswith("---") or stripped.startswith("..."):
             _fail(source, lineno, "document markers are not supported")
 
-        content = raw.split("#", 1)[0].rstrip()
+        content = _strip_comment(raw)
         indent = len(content) - len(content.lstrip(" "))
         if indent % 2:
             _fail(source, lineno, f"indent of {indent} is not a multiple of two")
@@ -540,6 +550,16 @@ TECHNOLOGIES = ("keycloak", "hdfs", "opensearch")
 # is the one technology that owns no VM role.
 NODELESS_TECHNOLOGIES = ("keycloak",)
 
+# The node roles each technology owns. Unconstrained keys here would build VMs
+# that no ansible role installs onto, so this is the same unknown-key rule the
+# rest of the config already applies — a node role costs an ansible role too,
+# so the config was never the only place a new one has to be declared.
+TECHNOLOGY_NODES = {
+    "keycloak": (),
+    "hdfs": ("namenode", "datanode"),
+    "opensearch": ("master",),
+}
+
 # The k8s and dcos roles both take their control node from groups['management'][0],
 # and the Keycloak play targets management[0].
 CONTROL_ROLE = "management"
@@ -724,6 +744,7 @@ def from_text(text: str, source: str) -> ClusterConfig:
         if "nodes" not in block:
             _at(source, "", f"{dotted} must declare nodes when enabled")
         node_blocks = _mapping(block["nodes"], source, f"{dotted}.nodes")
+        _reject_unknown(node_blocks, TECHNOLOGY_NODES[name], source, f"{dotted}.nodes")
         if not node_blocks:
             _at(source, "", f"{dotted} must declare nodes when enabled")
         tech_roles[name] = [
