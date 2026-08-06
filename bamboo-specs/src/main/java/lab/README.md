@@ -19,9 +19,12 @@ lab/
 ├── deprovisioncluster/         # FORGE-DEPROV
 │   ├── DeprovisionClusterSpec.java
 │   └── scripts/deprovision.py
-└── agentimage/                 # AGENT-BUILD
-    ├── BuildAgentImageSpec.java
-    └── README.md               # build script lives in the bamboo-agent repo
+├── agentimage/                 # AGENT-BUILD
+│   ├── BuildAgentImageSpec.java
+│   └── README.md               # build script lives in the bamboo-agent repo
+└── specspublish/               # FORGE-SPECS
+    ├── PublishSpecsSpec.java
+    └── scripts/publish_specs.py
 ```
 
 Yes, Python and Terraform live inside a Maven source root. That is deliberate:
@@ -66,8 +69,10 @@ plan → plan.
    reaches into another plan's directory.
 5. Not executed by a plan — helm values, license fetch, host-agent install/run
    — it belongs in `infra/`, not here.
-6. Register the spec class in the Makefile's `SPEC_CLASSES` so
-   `make specs-publish` picks it up.
+6. Nothing to register. `specspublish/scripts/publish_specs.py` discovers
+   `lab/*/*Spec.java` and derives the class from the path, so the directory
+   layout is the plan list. Your spec needs a `main()` that calls
+   `BambooServer.publish` — that is what the publisher invokes.
 
 ## Conventions
 

@@ -48,6 +48,13 @@ docs/provision-usage.md.
   role without a full rebuild
 - `make lint` — pytest + terraform fmt/validate + ansible-lint + mvn test
   (pytest is a host tool like shellcheck was: `uv tool install pytest`)
+- `make hooks-install` — one-time: `git config core.hooksPath infra/githooks`,
+  so a push to `main` republishes every plan. The hook skips quietly when
+  Bamboo is unreachable and never blocks a push
+- `make specs-publish` — publish every plan now. Needs `make ui` running and
+  a Bamboo PAT in `~/.forgelab/bamboo_pat` (chmod 600); `FORGELAB_BAMBOO_PAT`
+  overrides it for one run. `bamboo-specs/.credentials` is generated from it,
+  never hand-maintained
 
 ## Layout map
 
@@ -119,3 +126,8 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
   requirement, so a bad variable fails in seconds on any agent instead of
   queueing behind the host agent. Entrypoints call `planvars` first as well, so
   `make provision` fails identically
+- Plans are published two ways and both call
+  `lab/specspublish/scripts/publish_specs.py`: the `pre-push` hook on `main`,
+  and the FORGE-SPECS plan polling `main` every 3 minutes. There is no list of
+  spec classes anywhere — the publisher globs `lab/*/*Spec.java`, so adding a
+  plan directory is the whole registration step
