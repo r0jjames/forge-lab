@@ -4,9 +4,6 @@ LAB := bamboo-specs/src/main/java/lab
 CLUSTER ?=
 TYPE ?=
 ADDONS ?=
-SPEC_CLASSES := lab.provisioncluster.ProvisionClusterSpec \
-                lab.deprovisioncluster.DeprovisionClusterSpec \
-                lab.agentimage.BuildAgentImageSpec
 
 .DEFAULT_GOAL := help
 
@@ -114,13 +111,7 @@ agent-run: ## Run host-local Bamboo agent in console mode
 
 .PHONY: specs-publish
 specs-publish: ## Publish all Bamboo Specs plans to the server
-	@[ -f bamboo-specs/.credentials ] || \
-	  (echo "bamboo-specs/.credentials missing (needs 'token=<bamboo PAT>')"; exit 1)
-	@for c in $(SPEC_CLASSES); do \
-	  echo "==> publishing $$c"; \
-	  (cd bamboo-specs && mvn -q compile exec:java -Dexec.mainClass=$$c \
-	    -Dexec.cleanupDaemonThreads=false) || exit 1; \
-	done
+	$(LAB)/specspublish/scripts/publish_specs.py
 
 .PHONY: provision
 provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=hdfs,keycloak,opensearch|none]
