@@ -10,6 +10,7 @@ for path in (
     LAB / "shared" / "python",
     LAB / "provisioncluster" / "scripts",
     LAB / "deprovisioncluster" / "scripts",
+    LAB / "specspublish" / "scripts",
     REPO_ROOT / "infra" / "scripts",
     REPO_ROOT / "infra" / "agent",
 ):
