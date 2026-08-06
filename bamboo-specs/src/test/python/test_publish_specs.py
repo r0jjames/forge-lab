@@ -7,14 +7,22 @@ from forgelab.proc import LabError
 
 
 def make_lab(tmp_path):
-    """A stand-in lab/ tree: two plans, a shared dir, and a stray file."""
+    """A stand-in lab/ tree: two plans, a shared dir, and a stray file.
+
+    shared/BogusSpec.java and foo/bar/DeepSpec.java exist to pin the glob's
+    real behavior, not just its intent: `*/*Spec.java` has no notion of
+    "shared" being special, and is exactly one directory level deep.
+    """
     (tmp_path / "provisioncluster").mkdir()
     (tmp_path / "provisioncluster" / "ProvisionClusterSpec.java").write_text("")
     (tmp_path / "agentimage").mkdir()
     (tmp_path / "agentimage" / "BuildAgentImageSpec.java").write_text("")
     (tmp_path / "shared").mkdir()
     (tmp_path / "shared" / "SpecConstants.java").write_text("")
+    (tmp_path / "shared" / "BogusSpec.java").write_text("")
     (tmp_path / "provisioncluster" / "README.md").write_text("")
+    (tmp_path / "foo" / "bar").mkdir(parents=True)
+    (tmp_path / "foo" / "bar" / "DeepSpec.java").write_text("")
     return tmp_path
 
 
@@ -22,12 +30,27 @@ def test_discovers_one_class_per_plan_directory(tmp_path):
     assert publish_specs.spec_classes(make_lab(tmp_path)) == [
         "lab.agentimage.BuildAgentImageSpec",
         "lab.provisioncluster.ProvisionClusterSpec",
+        "lab.shared.BogusSpec",
     ]
 
 
-def test_discovery_ignores_shared_and_non_spec_files(tmp_path):
+def test_shared_is_not_special_cased_only_the_naming_convention_excludes_it(tmp_path):
+    # spec_classes carries no directory list (see its docstring: "the layout
+    # is the list"). shared/ stays out today only because nothing in it
+    # happens to match *Spec.java — a real <Name>Spec.java placed there, like
+    # BogusSpec.java, is published exactly like any plan's.
     classes = publish_specs.spec_classes(make_lab(tmp_path))
-    assert not any("shared" in c or "README" in c for c in classes)
+    assert "lab.shared.BogusSpec" in classes
+
+
+def test_discovery_ignores_non_spec_files(tmp_path):
+    classes = publish_specs.spec_classes(make_lab(tmp_path))
+    assert not any("SpecConstants" in c or "README" in c for c in classes)
+
+
+def test_discovery_is_exactly_one_level_deep(tmp_path):
+    classes = publish_specs.spec_classes(make_lab(tmp_path))
+    assert not any("DeepSpec" in c for c in classes)
 
 
 def test_discovers_the_real_tree():

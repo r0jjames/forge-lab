@@ -4,9 +4,12 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 
 import com.atlassian.bamboo.specs.api.model.plan.PlanProperties;
+import com.atlassian.bamboo.specs.api.model.trigger.TriggerProperties;
 import com.atlassian.bamboo.specs.api.util.EntityPropertiesBuilders;
+import com.atlassian.bamboo.specs.model.trigger.RepositoryPollingTriggerProperties;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Duration;
 import java.util.List;
 import lab.shared.SpecConstants;
 import org.junit.Test;
@@ -41,6 +44,18 @@ public class PublishSpecsSpecTest {
                 "the plan must carry a repository polling trigger",
                 plan.getTriggers().stream()
                         .anyMatch(t -> t.getClass().getSimpleName().startsWith("RepositoryPolling")));
+        assertEquals(
+                "POLL_PERIOD must stay 3 minutes unless deliberately changed",
+                Duration.ofMinutes(3), PublishSpecsSpec.POLL_PERIOD);
+
+        TriggerProperties trigger = plan.getTriggers().stream()
+                .filter(t -> t.getClass().getSimpleName().startsWith("RepositoryPolling"))
+                .findFirst()
+                .orElseThrow();
+        assertEquals(
+                "the built trigger must carry the same polling period",
+                PublishSpecsSpec.POLL_PERIOD,
+                ((RepositoryPollingTriggerProperties) trigger).getPollingPeriod());
     }
 
     @Test
