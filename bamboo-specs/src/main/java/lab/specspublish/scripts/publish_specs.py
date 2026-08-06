@@ -10,8 +10,10 @@ from the filesystem and adding a plan needs no bookkeeping elsewhere.
 """
 
 import os
+import socket
 import sys
 from pathlib import Path
+from urllib.parse import urlparse
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"))
 
@@ -72,3 +74,66 @@ def write_credentials(token: str, dest: Path) -> Path:
     with os.fdopen(handle, "w") as out:
         out.write(render_credentials(token))
     return dest
+
+
+def server_reachable(url: str, timeout: float = 2.0) -> bool:
+    """True when something accepts a TCP connection at `url`'s host and port.
+
+    A connect check, not an HTTP one: Bamboo answers slowly while it boots and
+    all this needs to know is whether the port-forward exists at all.
+    """
+    parsed = urlparse(url)
+    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+    try:
+        with socket.create_connection((parsed.hostname, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def publish(class_name: str):
+    """Run one spec's main(), which POSTs the plan to Bamboo."""
+    print(f"==> publishing {class_name}")
+    proc.run(
+        "mvn",
+        "-q",
+        "compile",
+        "exec:java",
+        f"-Dexec.mainClass={class_name}",
+        "-Dexec.cleanupDaemonThreads=false",
+        cwd=paths.SPECS_ROOT,
+    )
+
+
+def main(argv):
+    skip_if_down = False
+    for arg in argv:
+        if arg == "--skip-if-unreachable":
+            skip_if_down = True
+        else:
+            proc.die(f"unknown argument {arg}\n{USAGE}")
+
+    if not server_reachable(BAMBOO_URL):
+        # The hook must never block a push; the plan must go red. Same check,
+        # opposite verdicts, which is the only thing the flag decides.
+        if skip_if_down:
+            print(f"==> bamboo unreachable at {BAMBOO_URL} — skipping specs publish")
+            return
+        proc.die(f"bamboo unreachable at {BAMBOO_URL} (is `make ui` running?)")
+
+    proc.require_tools("mvn")
+    classes = spec_classes(paths.LAB_DIR)
+    if not classes:
+        proc.die(f"no *Spec.java found under {paths.LAB_DIR}")
+
+    creds = write_credentials(
+        resolve_token(os.environ, paths.BAMBOO_PAT), paths.SPECS_ROOT / ".credentials"
+    )
+    print(f"==> credentials: {creds}")
+    for class_name in classes:
+        publish(class_name)
+    print(f"==> published {len(classes)} plan(s) to {BAMBOO_URL}")
+
+
+if __name__ == "__main__":
+    proc.main(main)

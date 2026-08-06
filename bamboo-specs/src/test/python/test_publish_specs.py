@@ -81,3 +81,61 @@ def test_credentials_overwrite_an_existing_file(tmp_path):
     publish_specs.write_credentials("fresh", dest)
     assert dest.read_text() == "token=fresh\n"
     assert oct(dest.stat().st_mode)[-3:] == "600"
+
+
+@pytest.fixture
+def publishes(monkeypatch, tmp_path):
+    """Record the commands main() would run; keep it off the network."""
+    calls = []
+    monkeypatch.setattr(publish_specs.proc, "run", lambda *a, **kw: calls.append((a, kw)))
+    monkeypatch.setattr(publish_specs.proc, "require_tools", lambda *tools: None)
+    monkeypatch.setattr(publish_specs, "server_reachable", lambda *a, **kw: True)
+    monkeypatch.setattr(publish_specs.paths, "SPECS_ROOT", tmp_path)
+    monkeypatch.setenv("FORGELAB_BAMBOO_PAT", "test-token")
+    return calls
+
+
+def test_main_publishes_every_discovered_class(publishes):
+    publish_specs.main([])
+    published = [
+        arg for args, _ in publishes for arg in args if arg.startswith("-Dexec.mainClass=")
+    ]
+    assert "-Dexec.mainClass=lab.provisioncluster.ProvisionClusterSpec" in published
+    assert len(published) == len(publish_specs.spec_classes(publish_specs.paths.LAB_DIR))
+
+
+def test_main_writes_credentials_next_to_the_pom(publishes, tmp_path):
+    publish_specs.main([])
+    assert (tmp_path / ".credentials").read_text() == "token=test-token\n"
+
+
+def test_main_runs_maven_from_the_specs_root(publishes, tmp_path):
+    publish_specs.main([])
+    assert all(kwargs["cwd"] == tmp_path for _, kwargs in publishes)
+
+
+def test_skip_flag_returns_quietly_when_bamboo_is_down(monkeypatch, capsys):
+    monkeypatch.setattr(publish_specs, "server_reachable", lambda *a, **kw: False)
+    monkeypatch.setattr(
+        publish_specs.proc, "run", lambda *a, **kw: pytest.fail("must not publish")
+    )
+    publish_specs.main(["--skip-if-unreachable"])
+    assert "skipping" in capsys.readouterr().out
+
+
+def test_without_the_flag_an_unreachable_server_is_an_error(monkeypatch):
+    monkeypatch.setattr(publish_specs, "server_reachable", lambda *a, **kw: False)
+    monkeypatch.setattr(
+        publish_specs.proc, "run", lambda *a, **kw: pytest.fail("must not publish")
+    )
+    with pytest.raises(LabError, match="unreachable"):
+        publish_specs.main([])
+
+
+def test_unknown_argument_is_rejected():
+    with pytest.raises(LabError, match="usage:"):
+        publish_specs.main(["--force"])
+
+
+def test_reachability_probe_is_false_for_a_closed_port():
+    assert publish_specs.server_reachable("http://127.0.0.1:1", timeout=0.5) is False
