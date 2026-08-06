@@ -10,18 +10,14 @@ import re
 from pathlib import Path
 
 from . import multipass
+from .clusterconfig import CONTROL_ROLE
 from .proc import die
 
 _HOST_RE = re.compile(r"^(\S+)\s+ansible_host=(\S+)")
 _NUM_RE = re.compile(r"(\d+)")
 
-# The groups the k8s and dcos roles target. Everything else in the inventory is
-# a VM that must never receive kubelet.
-K8S_GROUPS = ("mgmt", "compute")
-
-# Every VM the hdfs role touches. The role branches on which of the two a host
-# is in: the NameNode is not a DataNode, and vice versa.
-HDFS_GROUPS = ("namenode", "datanode")
+# The ansible group the k8s and dcos roles take their control node from.
+CONTROL_GROUP = CONTROL_ROLE
 
 
 def _natural_key(name: str):
@@ -35,13 +31,17 @@ def _natural_key(name: str):
     return [int(tok) if tok.isdigit() else tok for tok in _NUM_RE.split(name)]
 
 
-def render(cluster: str, groups) -> str:
+def render(cluster: str, groups, children) -> str:
     """Build the .ini for a cluster from an ordered {group: [Node]} mapping.
 
-    Empty groups are still emitted: a `hosts: data` play must resolve to zero
-    hosts rather than fail on a group ansible has never heard of. Group order
-    is the caller's dict order, but nodes within a group are always sorted by
-    natural-sort name — see `_natural_key`.
+    Empty groups are still emitted: a `hosts: hdfs_datanode` play must resolve
+    to zero hosts rather than fail on a group ansible has never heard of. Group
+    order is the caller's dict order, but nodes within a group are always sorted
+    by natural-sort name — see `_natural_key`.
+
+    `children` is the {child: [group]} mapping the cluster's config derives —
+    k8s_nodes for the cluster nodes, <technology>_nodes for each enabled
+    technology that owns VMs. Nothing here knows which technologies exist.
     """
     lines = []
     for group, nodes in groups.items():
@@ -49,8 +49,8 @@ def render(cluster: str, groups) -> str:
         ordered = sorted(nodes, key=lambda n: _natural_key(n.name))
         lines += [f"{n.name} ansible_host={multipass.lan_ip(n)}" for n in ordered]
         lines.append("")
-    lines += ["[k8s_nodes:children]", *K8S_GROUPS, ""]
-    lines += ["[hdfs_nodes:children]", *HDFS_GROUPS, ""]
+    for child, members in children.items():
+        lines += [f"[{child}:children]", *members, ""]
     lines += [
         "[all:vars]",
         "ansible_user=ubuntu",
@@ -96,9 +96,9 @@ def first_ip(text: str, group: str) -> str:
     return ips[0] if ips else ""
 
 
-def mgmt_ip(text: str) -> str:
-    """The first mgmt-group host address, or "" when the group is empty."""
-    return first_ip(text, "mgmt")
+def control_ip(text: str) -> str:
+    """The first management-group host address, or "" when the group is empty."""
+    return first_ip(text, CONTROL_GROUP)
 
 
 def assert_unique_ips(path):
