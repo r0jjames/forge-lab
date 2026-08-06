@@ -26,6 +26,24 @@ def test_ignores_comments_and_blank_lines():
     assert clusterconfig.parse(text, "c.yaml") == {"cluster": {"type": "k8s"}}
 
 
+def test_a_bare_hash_inside_a_value_is_part_of_the_value():
+    """Real YAML opens a comment only after whitespace. Splitting on any '#'
+    would silently truncate the value instead of rejecting it."""
+    assert clusterconfig.parse("a: v1#2\n", "c.yaml") == {"a": "v1#2"}
+
+
+def test_a_hash_inside_a_quoted_value_survives():
+    assert clusterconfig.parse('a: "b#c"\n', "c.yaml") == {"a": "b#c"}
+
+
+def test_a_comment_after_whitespace_is_still_stripped():
+    assert clusterconfig.parse("a: 4G  # bump me\n", "c.yaml") == {"a": "4G"}
+
+
+def test_a_comment_directly_after_a_key_opener_is_stripped():
+    assert clusterconfig.parse("a:  # a block\n  b: 1\n", "c.yaml") == {"a": {"b": "1"}}
+
+
 def test_dedents_back_to_an_outer_mapping():
     text = "a:\n  b:\n    c: 1\nd: 2\n"
     assert clusterconfig.parse(text, "c.yaml") == {"a": {"b": {"c": "1"}}, "d": "2"}

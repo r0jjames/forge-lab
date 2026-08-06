@@ -25,6 +25,16 @@ def _fail(source, lineno, message):
     die(f"{source}:{lineno}: {message}")
 
 
+def _strip_comment(raw: str) -> str:
+    """Drop a trailing comment. A '#' only opens one at line start or after
+    whitespace — a bare '#' inside a value is part of the value, as in real
+    YAML, so a value is never silently truncated."""
+    for index, char in enumerate(raw):
+        if char == "#" and (index == 0 or raw[index - 1] in " \t"):
+            return raw[:index].rstrip()
+    return raw.rstrip()
+
+
 def parse(text: str, source: str) -> dict:
     """Nested plain dicts from the accepted subset. Every scalar is a str.
 
@@ -48,7 +58,7 @@ def parse(text: str, source: str) -> dict:
         if stripped.startswith("---") or stripped.startswith("..."):
             _fail(source, lineno, "document markers are not supported")
 
-        content = raw.split("#", 1)[0].rstrip()
+        content = _strip_comment(raw)
         indent = len(content) - len(content.lstrip(" "))
         if indent % 2:
             _fail(source, lineno, f"indent of {indent} is not a multiple of two")
