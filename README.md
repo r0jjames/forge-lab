@@ -534,11 +534,15 @@ Both indexers should be listed under `Active forwards`.
 
 #### Licence
 
-The cluster manager is the licence manager; the other three draw from its
-pool. Drop a Splunk Developer Personal License (free, 10GB/day, 6 months,
-from https://dev.splunk.com/enterprise/dev_license) at
-`~/.forgelab/splunk-dev-license.xml` — outside the repo, like every other
-key here — and the role installs it.
+Drop a Splunk Developer Personal License (free, 10GB/day, 6 months, from
+https://dev.splunk.com/enterprise/dev_license) at
+`~/.forgelab/splunk-dev-license.xml` — outside the repo, like every other key
+here — and the role installs it on **every** Enterprise instance.
+
+Not the tidier topology of one licence manager with the rest as peers: that
+licence refuses the job, and says so on the peers with `ERROR LMTracker -
+failed to send rows, reason='This license does not support being a remote
+manager'`, leaving them unlicensed. Each instance holds the licence itself.
 
 Without it each instance runs its own 60-day trial, which expires into
 Splunk Free — and Free forbids distributed search and forwarder

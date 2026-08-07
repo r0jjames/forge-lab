@@ -56,6 +56,9 @@
     line: "SPLUNK_OS_USER={{ splunkforwarder_user }}"
   notify: Restart splunkforwarder
 
+# Notifies a restart because splunkd reads this only at startup: on an instance
+# that is already running, writing the file alone changes nothing and the wait
+# for the user database below would time out against it.
 - name: Seed the admin account
   ansible.builtin.template:
     src: user-seed.conf.j2
@@ -63,6 +66,7 @@
     owner: "{{ splunkforwarder_user }}"
     group: "{{ splunkforwarder_user }}"
     mode: "0600"
+  notify: Restart splunkforwarder
 
 - name: Where this forwarder sends its data
   ansible.builtin.template:
@@ -89,6 +93,13 @@
     mode: "0644"
   notify: Restart splunkforwarder
 
+# Before the waits below, not after them: the config above notifies a restart,
+# and on an already-running forwarder it is that restart which processes a
+# re-seeded user-seed.conf. Waiting for the result first would time out against
+# the instance that has not been restarted yet.
+- name: Apply pending restarts before waiting on their result
+  ansible.builtin.meta: flush_handlers
+
 - name: Start the Universal Forwarder
   ansible.builtin.systemd:
     name: splunkforwarder
@@ -103,6 +114,15 @@
   ansible.builtin.wait_for:
     path: "{{ splunkforwarder_home }}/var/run/splunk/splunkd.pid"
     timeout: 180
+
+# The pid file appears the moment splunkd launches; the user database it builds
+# from user-seed.conf lands much later. Deleting the seed in between leaves a
+# forwarder whose CLI answers "No users exist. Please set up a user." — see
+# roles/splunk/tasks/start.yml for the same race on the Enterprise side.
+- name: Wait for the admin account to be created from the seed
+  ansible.builtin.wait_for:
+    path: "{{ splunkforwarder_home }}/etc/passwd"
+    timeout: 300
 
 - name: Drop the seed file now the admin exists
   ansible.builtin.file:

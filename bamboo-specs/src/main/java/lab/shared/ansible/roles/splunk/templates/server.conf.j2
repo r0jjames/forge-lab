@@ -20,10 +20,13 @@ pass4SymmKey = {{ splunk_pass4symmkey }}
 ## forwarder-facing S2S port.
 [replication_port://{{ splunk_replication_port }}]
 {% endif %}
-{% if splunk_node_role != 'cluster-manager' %}
 
-## The cluster manager doubles as the license manager, so every other instance
-## draws from its one Developer licence pool instead of holding its own trial.
-[license]
-manager_uri = {{ splunk_manager_uri }}
-{% endif %}
+## No [license] manager_uri, deliberately. Pointing the peers at the cluster
+## manager is the normal Splunk topology, and it is exactly what a Developer
+## Personal License refuses to serve:
+##
+##   ERROR LMTracker - failed to send rows, reason='This license does not
+##   support being a remote manager'
+##
+## despite that licence listing CanBeRemoteMaster among its features. Every
+## instance therefore carries the licence itself — see tasks/license.yml.

@@ -15,6 +15,16 @@
     port: "{{ splunk_mgmt_port }}"
     timeout: "{{ splunk_start_timeout }}"
 
+# splunkd creates its user database from user-seed.conf well after the
+# management port opens — measured at ~150s into an emulated first start. Delete
+# the seed on the port alone and you race that, and the instance that loses ends
+# up with no users at all: every REST call and CLI command then answers
+# "No users exist. Please set up a user." Wait for the database itself.
+- name: Wait for the admin account to be created from the seed
+  ansible.builtin.wait_for:
+    path: "{{ splunk_home }}/etc/passwd"
+    timeout: "{{ splunk_start_timeout }}"
+
 - name: Drop the seed file now the admin exists
   ansible.builtin.file:
     path: "{{ splunk_home }}/etc/system/local/user-seed.conf"

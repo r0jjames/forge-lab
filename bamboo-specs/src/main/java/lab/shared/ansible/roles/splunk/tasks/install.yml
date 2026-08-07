@@ -68,9 +68,11 @@
     line: "SPLUNK_OS_USER={{ splunk_user }}"
   notify: Restart splunk
 
-# Splunk reads this only while no user database exists, so it seeds the admin on
-# first start and is inert afterwards. It holds the password in cleartext, which
-# is why start.yml deletes it once the instance is up.
+# Splunk reads this only at startup, and only while no user database exists: it
+# seeds the admin on first start and is inert afterwards. It holds the password
+# in cleartext, which is why start.yml deletes it once the account exists.
+# The notify matters on an instance that is already running — writing the file
+# alone changes nothing there, and start.yml's wait would time out against it.
 - name: Seed the admin account
   ansible.builtin.template:
     src: user-seed.conf.j2
@@ -78,6 +80,7 @@
     owner: "{{ splunk_user }}"
     group: "{{ splunk_user }}"
     mode: "0600"
+  notify: Restart splunk
 
 - name: Splunk systemd unit
   ansible.builtin.template:

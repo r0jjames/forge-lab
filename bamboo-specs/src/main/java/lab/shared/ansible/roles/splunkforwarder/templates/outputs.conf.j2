@@ -9,4 +9,8 @@ server = {{ groups['splunk_indexer'] | map('extract', hostvars, 'ansible_host') 
 ## Switch indexer every 30s rather than per-file, so one busy log cannot pin all
 ## of this host's data onto a single peer.
 autoLBFrequency = 30
-useACK = true
+## No useACK: indexer acknowledgement round-trips exceed their 300s window
+## against emulated indexers, and the forwarder then re-sends everything it
+## never heard back about — "Read operation timed out expecting ACK ... in 300
+## seconds", followed by duplicate events. Delivery without end-to-end ACK is
+## the right trade for a lab.

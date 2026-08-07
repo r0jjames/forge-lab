@@ -59,7 +59,7 @@ technologies:
   splunk:
     enabled: true
     nodes:
-      # One manager per cluster, and it doubles as the licence manager.
+      # One manager per cluster. It owns the index bundle the peers run.
       cluster-manager:
         count: 1
         cpu: 2

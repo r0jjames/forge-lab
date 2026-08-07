@@ -28,21 +28,21 @@
 - name: Install Splunk Enterprise
   ansible.builtin.import_tasks: install.yml
 
-- name: Install the licence on the licence manager
+- name: Install the licence
   ansible.builtin.import_tasks: license.yml
-  when: inventory_hostname in groups['splunk_cluster_manager']
 
 - name: Clustering, inputs and indexes
   ansible.builtin.import_tasks: config.yml
 
+# Every notify in this role has fired by now, so flushing here does two jobs:
+# the peers the manager later waits for are running their final configuration
+# rather than the one they booted with, and start.yml's waits below measure the
+# instance that restart produced rather than the one preceding it.
+- name: Apply pending restarts before waiting on their result
+  ansible.builtin.meta: flush_handlers
+
 - name: Start Splunk
   ansible.builtin.import_tasks: start.yml
-
-# Any config written above notified the restart handler. Flush it here, before
-# the bundle push, so the peers the manager waits for are running their final
-# configuration rather than the one they booted with.
-- name: Apply pending restarts before touching the cluster
-  ansible.builtin.meta: flush_handlers
 
 - name: Push the index bundle from the manager
   ansible.builtin.import_tasks: bundle.yml

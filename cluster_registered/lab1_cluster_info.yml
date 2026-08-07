@@ -2,33 +2,93 @@
 # Rewritten on every provision; removed on deprovision.
 cluster: lab1
 type: k8s
-provisioned_at: "2026-08-03T12:35:03Z"
+provisioned_at: "2026-08-07T07:02:33Z"
 ssh:
   user: ubuntu
   key: "~/.forgelab/id_ed25519"
-  example: ssh lab1-mgmt-1
+  example: ssh lab1-management-1
 nodes:
-  - name: lab1-mgmt-1
-    role: mgmt
-    ip: 192.168.252.61
+  - name: lab1-management-1
+    role: management
+    ip: 192.168.252.117
     cpu: "2"
     mem: 4G
     disk: 20G
   - name: lab1-compute-1
     role: compute
-    ip: 192.168.252.60
+    ip: 192.168.252.111
     cpu: "2"
     mem: 3G
     disk: 20G
   - name: lab1-compute-2
     role: compute
-    ip: 192.168.252.59
+    ip: 192.168.252.112
     cpu: "2"
     mem: 3G
     disk: 20G
+  - name: lab1-hdfs-namenode-1
+    role: hdfs-namenode
+    ip: 192.168.252.113
+    cpu: "2"
+    mem: 4G
+    disk: 20G
+  - name: lab1-hdfs-datanode-1
+    role: hdfs-datanode
+    ip: 192.168.252.114
+    cpu: "2"
+    mem: 4G
+    disk: 40G
+  - name: lab1-hdfs-datanode-2
+    role: hdfs-datanode
+    ip: 192.168.252.116
+    cpu: "2"
+    mem: 4G
+    disk: 40G
+  - name: lab1-hdfs-datanode-3
+    role: hdfs-datanode
+    ip: 192.168.252.119
+    cpu: "2"
+    mem: 4G
+    disk: 40G
+  - name: lab1-opensearch-master-1
+    role: opensearch-master
+    ip: 192.168.252.118
+    cpu: "2"
+    mem: 6G
+    disk: 40G
+  - name: lab1-opensearch-master-2
+    role: opensearch-master
+    ip: 192.168.252.120
+    cpu: "2"
+    mem: 6G
+    disk: 40G
+  - name: lab1-opensearch-master-3
+    role: opensearch-master
+    ip: 192.168.252.115
+    cpu: "2"
+    mem: 6G
+    disk: 40G
 components:
+  - name: hdfs
+    namenode: "hdfs://192.168.252.113:8020"
+    ui: "http://192.168.252.113:9870"
+    version: 3.4.1
+  - name: opensearch
+    ui: "http://192.168.252.118:5601"
+    url: "http://192.168.252.118:9200"
+    version: 3.4.0
   - name: kubernetes
     version: "1.30"
   - name: containerd
   - name: flannel
     version: latest
+  - name: k9s
+    version: 0.32.7
+  - name: local-path-provisioner
+    version: v0.0.31
+  - name: keycloak
+    client_id: app
+    realm: forgelab
+    url: "http://192.168.252.117:30080"
+    version: 26.0.7
+credentials: "~/.forgelab/lab1-credentials.yml"

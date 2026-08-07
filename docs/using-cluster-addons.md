@@ -150,7 +150,7 @@ you can rely on these regardless of which run produced the cluster:
 | `<cluster>-hdfs-namenode-1` | HDFS NameNode, and nothing else — it stores metadata, not blocks |
 | `<cluster>-hdfs-datanode-1..N` | HDFS DataNodes (blocks live here; the NameNode is not one of them) |
 | `<cluster>-opensearch-master-1..N` | OpenSearch nodes + Dashboards (node 1 always runs Dashboards; the rest run OpenSearch only) |
-| `<cluster>-splunk-cluster-manager-1` | Splunk cluster manager, which is also the licence manager |
+| `<cluster>-splunk-cluster-manager-1` | Splunk cluster manager — owns the index bundle the peers run |
 | `<cluster>-splunk-indexer-1..N` | Splunk indexers: forwarder traffic (9997), HEC (8088), the indexes themselves |
 | `<cluster>-splunk-search-head-1` | Splunk search head — the UI you actually search from, port 8000 |
 
@@ -461,10 +461,15 @@ CLI is the only way in.
 
 ### The licence
 
-The cluster manager is also the licence manager, and the other three
-instances draw from its pool. A Splunk Developer Personal License lives at
-`~/.forgelab/splunk-dev-license.xml` on the lab host — never in this
-repository — and is copied to the manager during install.
+Every Enterprise instance carries its own copy of the licence. A Splunk
+Developer Personal License lives at `~/.forgelab/splunk-dev-license.xml` on
+the lab host — never in this repository — and install copies it to all four.
+
+The usual Splunk topology, one licence manager with the rest as peers, is not
+available with this licence: the peers are rejected with `ERROR LMTracker -
+failed to send rows, reason='This license does not support being a remote
+manager'` and end up unlicensed, even though the licence lists
+`CanBeRemoteMaster` among its features.
 
 Without that file, every instance starts its own 60-day trial, which
 expires into Splunk Free. Free forbids distributed search and forwarder
