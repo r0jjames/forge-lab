@@ -10,9 +10,8 @@ lab/
 │   ├── SpecConstants.java      # BAMBOO_URL, REPO_NAME
 │   ├── python/forgelab/        # the lab's one Python library (stdlib only)
 │   ├── terraform/              # VM lifecycle (modules/multipass = backend seam)
-│   ├── ansible/                # site.yml + roles, generated inventory (gitignored)
-│   │   └── roles/{common,dcos,k8s,hdfs,keycloak,opensearch}
-│   └── clusters/               # per-cluster tfvars (+ defaults.tfvars)
+│   └── ansible/                # site.yml + roles, generated inventory (gitignored)
+│       └── roles/{common,dcos,k8s,hdfs,keycloak,opensearch}
 ├── provisioncluster/           # FORGE-PROV
 │   ├── ProvisionClusterSpec.java
 │   └── scripts/{provision.py,install.py,verify.py}
@@ -31,6 +30,12 @@ Yes, Python and Terraform live inside a Maven source root. That is deliberate:
 one lookup gets you everything a plan runs. Maven compiles `.java` and ignores
 the rest, so nothing here affects the build.
 
+A cluster's type, its node sizing, and which technologies it runs live in
+`cluster_configs/<name>_cluster.yaml` at the repo root — not under `lab/`,
+because it is committed input, unlike the generated `cluster_registered/`.
+Every plan's checkout carries it; `forgelab/clusterconfig.py` is the only
+code that reads it.
+
 ## The forgelab package
 
 `shared/python/forgelab/` is the only library in the lab, standard library only:
@@ -39,7 +44,8 @@ the rest, so nothing here affects the build.
 | -------------- | --------------------------------------------------------- |
 | `proc.py`      | `LabError`/`die`, `run`, `run_out`, `require_tools`, `main` |
 | `paths.py`     | every path, derived from the package's own location        |
-| `tfvars.py`    | resolve a cluster's tfvars, read `cluster_type` out of it  |
+| `clusterconfig.py` | parse and validate `cluster_configs/<name>_cluster.yaml`; derive the Terraform nodes map, inventory groups, and registry sizing |
+| `planvars.py`  | resolve `(cluster_name, cluster_config)` into a cluster name and a loaded `ClusterConfig` |
 | `terraform.py` | init / workspace / apply-with-retry / destroy              |
 | `multipass.py` | the VM backend seam — parse `multipass list`, purge VMs    |
 | `inventory.py` | render the ansible inventory, read hosts back out          |

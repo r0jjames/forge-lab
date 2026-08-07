@@ -2,10 +2,10 @@
 
 Personal CI/CD lab: Bamboo on Rancher Desktop K8s + pipelines that provision
 Multipass VM clusters (k8s or dcos). Design: docs/superpowers/specs/2026-07-23-forge-lab-design.md.
-For how to actually use a provisioned cluster's addons (Keycloak, HDFS,
+For how to actually use a provisioned cluster's technologies (Keycloak, HDFS,
 OpenSearch/Dashboards) and k9s day-to-day, see docs/using-cluster-addons.md.
 For running the Provision plan itself — plan variable values, expected VM
-counts per addon set, and the per-addon health checks — see
+counts per config, and the per-technology health checks — see
 docs/provision-usage.md.
 
 ## Commands
@@ -33,19 +33,19 @@ docs/provision-usage.md.
   (`agent.role=ci`), which has no terraform/multipass. It also points the
   cluster registry at `<this clone>/cluster_registered`, via both
   `FORGELAB_REGISTRY_DIR` and `~/.forgelab/registry_dir`
-- `make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=keycloak,hdfs,opensearch]`
+- `make provision CLUSTER=lab1 [CONFIG=lab1]`
   / `make deprovision CLUSTER=lab1` — provision also writes
   `~/.forgelab/ssh_config.d/<cluster>.conf` (included from `~/.ssh/config`) so
-  `ssh lab1-mgmt-1` / `ssh <node-ip>` work as `ubuntu` with the lab key;
-  deprovision removes it. `TYPE=`/`ADDONS=` override the cluster's tfvars for
-  this run; empty or left at the plan-variable placeholder means "not set" and
-  the tfvars wins. `ADDONS=none` installs no addons at all and cannot be
-  combined with a real name. Provision also writes
+  `ssh lab1-management-1` / `ssh <node-ip>` work as `ubuntu` with the lab key;
+  deprovision removes it. `CONFIG=` picks which
+  `cluster_configs/<name>_cluster.yaml` to build from; empty means the config
+  named after the cluster. There is no fallback — a missing config is an error
+  naming the path. Provision also writes
   `cluster_registered/<cluster>_cluster_info.yml` (tracked, uncommitted) as its
   last step; deprovision deletes it
-- `make addons CLUSTER=lab1 [TYPE=k8s] [ADDONS=hdfs]` — re-run the install stage
-  only, against an existing cluster's inventory. Use it to iterate on an ansible
-  role without a full rebuild
+- `make addons CLUSTER=lab1 [CONFIG=lab1]` — re-run the install stage only,
+  against an existing cluster's inventory. Use it to iterate on an ansible role
+  without a full rebuild
 - `make lint` — pytest + terraform fmt/validate + ansible-lint + mvn test
   (pytest is a host tool like shellcheck was: `uv tool install pytest`)
 - `make hooks-install` — one-time: `git config core.hooksPath infra/githooks`,
@@ -66,10 +66,15 @@ one directory per Bamboo plan, holding its spec AND the code it runs:
 - `lab/shared/` — used by 2+ plans: `SpecConstants.java`,
   `python/forgelab/` (the lab's one library, stdlib only; `credentials.py` writes
   `~/.forgelab/<cluster>-credentials.yml`, referenced by the registry, never inlined),
-  `terraform/` (`modules/multipass/` = swappable VM backend boundary),
-  `ansible/`, `clusters/<name>.tfvars` (sizing; `defaults.tfvars` fallback)
+  `terraform/` (`modules/multipass/` = swappable VM backend boundary), `ansible/`
 - `infra/` — lab operations NOT run by any plan: `helm/` chart values,
   `agent/` host-agent install+run, `scripts/` license fetch
+- `cluster_configs/` — committed input, one `<name>_cluster.yaml` per cluster:
+  its type, its node sizing, and which technologies it runs. Parsed and
+  validated by `forgelab/clusterconfig.py`, which expands it into the Terraform
+  `nodes` map, the ansible inventory groups, and the registry's sizing — so
+  those three can no longer disagree. Repo-relative, unlike
+  `cluster_registered/`: it is committed, so every Bamboo checkout carries it
 - `cluster_registered/` — generated output, tracked, owned by PROV/DEPROV:
   `<cluster>_cluster_info.yml` (IPs, sizing, ssh hints, installed components)
   written by provision after verify passes, deleted by deprovision. The
@@ -113,27 +118,30 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
 - Terraform applies run `-parallelism=1` (`terraform.apply_retry`): concurrent
   `multipass launch` races give every VM in the batch the same MAC, hence one
   shared DHCP lease. Do not drop the flag
-- Cluster addons are opt-in per cluster: `addons = "keycloak,hdfs,opensearch"` in
-  the cluster's tfvars, overridable by the `addons` Bamboo plan variable. The
-  list gates the ansible roles AND zeroes the VM roles of disabled addons, so
-  sizing and enablement cannot disagree. k9s is not an addon — it ships with the
-  k8s role. Addon secrets live in `~/.forgelab/<cluster>-credentials.yml` (0600)
-  and never in `cluster_registered/`
-- A VM's role is its name: `<cluster>-<role>-<n>`, and `<role>` is also the
-  ansible group and the `<role>_cpu`/`_mem`/`_disk` prefix in the tfvars, which
-  is how `registry.nodes_from` fills in `cluster_registered/`. Rename a role and
-  all four move together. hdfs owns two — `namenode` (metadata only, no
-  DataNode) and `datanode` — but only `datanode_count` is configurable:
-  terraform derives one NameNode from it, since non-HA HDFS has exactly one
-- Plan variables are validated in `forgelab/planvars.py` and nowhere else. Their
-  Bamboo defaults are placeholders documenting the legal values (Bamboo has no
-  hint field), so each default is deliberately not a legal value and means "no
-  override". The strings are mirrored in `ProvisionClusterSpec.java` and pinned
-  by `ProvisionClusterSpecTest`; change both or neither
+- Cluster technologies are opt-in per cluster: `technologies.<name>.enabled` in
+  `cluster_configs/<cluster>_cluster.yaml`. A disabled technology keeps its
+  sizing in the file, unvalidated, and contributes no VMs, no inventory groups
+  and no ansible roles — enablement and sizing cannot disagree because they are
+  the same block. k9s is not a technology — it ships with the k8s role. Secrets
+  live in `~/.forgelab/<cluster>-credentials.yml` (0600), never in
+  `cluster_registered/`
+- A VM's role is its name: `<cluster>-<role>-<n>`. For `cluster_nodes` the role
+  is the key verbatim (`management`, `compute`); for a technology's nodes it is
+  `<technology>-<node>` (`hdfs-namenode`, `opensearch-master`), so two
+  technologies can each own a `master`. The ansible group is the role with `-`
+  replaced by `_`, because ansible warns on dashed group names. Rename a key in
+  the config and the VM name, the group and the registry's `role` field all move
+  together. hdfs owns two node roles — `namenode` (metadata only, no DataNode)
+  and `datanode` — and `clusterconfig` requires exactly one NameNode, since
+  non-HA HDFS has exactly one
+- PROV takes two plan variables: `cluster_name` and `cluster_config` (empty
+  means the config named after the cluster). Nothing overrides the config —
+  it is the single source of truth, validated in `forgelab/clusterconfig.py`
+  and nowhere else
 - PROV and DEPROV each open with a `Validate` stage carrying NO `agent.role`
-  requirement, so a bad variable fails in seconds on any agent instead of
-  queueing behind the host agent. Entrypoints call `planvars` first as well, so
-  `make provision` fails identically
+  requirement, so a bad cluster name or config fails in seconds on any agent
+  instead of queueing behind the host agent. Entrypoints call `planvars` first
+  as well, so `make provision` fails identically
 - Plans are published two ways and both call
   `lab/specspublish/scripts/publish_specs.py`: the `pre-push` hook on `main`,
   and the FORGE-SPECS plan polling `main` every 3 minutes. There is no list of

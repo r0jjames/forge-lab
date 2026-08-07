@@ -47,8 +47,11 @@ Mac host (32Gi+)
 ├── bamboo-agent               (plain process on Mac — Phase 1)
 │   └── has: JDK 17, terraform, ansible, multipass CLI (direct)
 └── Multipass VMs              (created by pipelines only)
-    ├── <name>-mgmt-1..N
-    └── <name>-compute-1..N    (counts/sizes from lab/shared/clusters/<name>.tfvars)
+    ├── <name>-management-1..N
+    ├── <name>-compute-1..N
+    ├── <name>-hdfs-namenode-1
+    ├── <name>-hdfs-datanode-1..N
+    └── <name>-opensearch-master-1..N    (counts/sizes from cluster_configs/<name>_cluster.yaml)
 ```
 
 **CI-agnostic core:** all real logic lives in the plans' shell scripts
@@ -70,7 +73,7 @@ Deprovision's backend sweep step is backend-scoped too.
 | D1 | CI engine | **Bamboo DC + 24h timebomb license** | Atlassian stopped new DC trial licenses 2026-03-30, but free 10-user 24h timebomb keys remain published on the Atlassian developer site for testing. Re-apply key per session; `bamboo-home` PVC persists everything else. Jenkins remains a paper fallback via the CI-agnostic core. |
 | D2 | Host K8s | **Rancher Desktop** | Already installed, lighter than UTM kubeadm, easy localhost access. |
 | D3 | Agent placement (Phase 1) | **Plain process on Mac host** | Direct access to `multipass`/`terraform`; zero SSH plumbing. Pod agent + SSH-to-host deferred to Phase 2+. |
-| D4 | Per-cluster config | **tfvars file per cluster** (`lab/shared/clusters/<name>.tfvars`) | Node counts, cpu/mem/disk, cluster_type versioned in repo; `defaults.tfvars` fallback; Terraform-native, no glue parser. |
+| D4 | Per-cluster config | **YAML config per cluster** (`cluster_configs/<name>_cluster.yaml`) | Node counts, cpu/mem/disk, cluster type and enabled technologies versioned in repo, in one file; no fallback file and no field defaulting, so the file is the whole truth; hand-written parser keeps the toolchain stdlib-only. |
 | D5 | TF state | Local backend + workspace per cluster | No cloud dependency; no state collisions. |
 | D6 | K8s install method | kubeadm + containerd | Matches real-world and prior UTM learning. |
 | D7 | VM backend | **Multipass, but swappable** | Backend isolated in a Terraform module; UTM/libvirt later = new module + one variable flip. Ansible only ever sees the generated inventory. |
@@ -215,13 +218,66 @@ At this point you have a licensed Bamboo server, a connected local agent, and
 published plans — the CI up (Phase 1) definition of done. Provisioning a
 cluster (Phase 2+) is covered next.
 
+## Cluster configs
+
+A cluster is described by one file, `cluster_configs/<name>_cluster.yaml`:
+
+```yaml
+cluster:
+  type: k8s                 # k8s | dcos
+
+cluster_nodes:
+  management:               # required — the control node
+    count: 1
+    cpu: 2
+    memory: 4G
+    disk: 20G
+  compute:
+    count: 2
+    cpu: 2
+    memory: 3G
+    disk: 20G
+
+technologies:
+  hdfs:
+    enabled: true
+    nodes:
+      namenode:             # exactly one — HDFS here is non-HA
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+      datanode:
+        count: 3
+        cpu: 2
+        memory: 4G
+        disk: 40G
+  opensearch:
+    enabled: false          # sizing below is kept, unvalidated, and builds nothing
+    nodes:
+      master:
+        count: 3
+        cpu: 2
+        memory: 6G
+        disk: 40G
+  keycloak:
+    enabled: true           # runs as pods on the cluster; declares no nodes
+```
+
+Every value is required when its block is enabled — there is no fallback file
+and no defaulting, so reading this one file tells you exactly what you get.
+`memory` and `disk` are multipass units (`4G`, `512M`), never `Gi`.
+
+Build it with `make provision CLUSTER=lab1`, or point a differently-named
+cluster at it with `make provision CLUSTER=lab2 CONFIG=lab1`.
+
 ## Pipeline usage
 
 ### Provisioning a cluster
 
 ```bash
-make provision CLUSTER=lab1              # uses lab/shared/clusters/lab1.tfvars if present
-make provision CLUSTER=lab1 TYPE=dcos    # override cluster_type from the tfvars file
+make provision CLUSTER=lab1              # builds from cluster_configs/lab1_cluster.yaml
+make provision CLUSTER=lab2 CONFIG=lab1  # builds lab2 from lab1's config
 ```
 
 What happens, stage by stage (whether triggered via `make` or via the
@@ -229,23 +285,23 @@ Bamboo `ProvisionClusterPlan`, since both call the same
 `lab/<planid>/scripts/*.py`):
 
 1. **Validate** — checks `cluster_name` matches `[a-z0-9-]+`; refuses if
-   `multipass list` already shows `<name>-` prefixed VMs; resolves config
-   from `lab/shared/clusters/<name>.tfvars` if it exists, else
-   `lab/shared/clusters/defaults.tfvars`.
-   An explicit `TYPE=` overrides whatever `cluster_type` the tfvars file sets.
+   `multipass list` already shows `<name>-` prefixed VMs; loads and validates
+   `cluster_configs/<config>_cluster.yaml` (`<config>` defaults to
+   `cluster_name`). There is no fallback file — a missing config is an error
+   naming the path it looked for.
 2. **Provision** — `terraform workspace select/new <name>`, then
-   `apply -var-file=<resolved> -var cluster_name=<name>` (serially — see the
+   `apply -var-file=<generated .tfvars.json> -input=false` (serially — see the
    Multipass MAC note under Troubleshooting); renders
    `lab/shared/ansible/inventory/<name>.ini` from the Terraform output,
    refusing to continue if two nodes came back with the same IP. Also writes
-   `~/.forgelab/ssh_config.d/<name>.conf` so `ssh <name>-mgmt-1` and
+   `~/.forgelab/ssh_config.d/<name>.conf` so `ssh <name>-management-1` and
    `ssh <node-ip>` log in as `ubuntu` with `~/.forgelab/id_ed25519` — no flags
    needed. The first provision prepends a single
    `Include ~/.forgelab/ssh_config.d/*.conf` line to `~/.ssh/config`
    (backing the old file up as `~/.ssh/config.forgelab.bak`); the include has
    to sit above any `Host *` block because ssh keeps the first value it finds
    for an option. `make deprovision` deletes the per-cluster file.
-3. **Install** — `ansible-playbook site.yml -i inventory/<name>.ini -e cluster_type=<type>`.
+3. **Install** — `ansible-playbook site.yml -i inventory/<name>.ini -e cluster_type=<type> -e addons=<enabled technologies>`.
    k8s path: kubeadm + containerd + CNI. dcos path: pinned installer version,
    cached locally.
 4. **Verify** — k8s: all nodes reach `Ready`. dcos: UI health endpoint
@@ -267,10 +323,10 @@ provisioned_at: "2026-08-03T12:20:25Z"
 ssh:
   user: ubuntu
   key: "~/.forgelab/id_ed25519"
-  example: ssh lab1-mgmt-1
+  example: ssh lab1-management-1
 nodes:
-  - name: lab1-mgmt-1
-    role: mgmt
+  - name: lab1-management-1
+    role: management
     ip: 192.168.252.10
     cpu: "2"
     mem: 4G
@@ -355,23 +411,23 @@ make deprovision CLUSTER=lab1
 Deprovision is **idempotent** — safe to run twice, and it's also the
 recovery path after a partial/failed provision (see Troubleshooting).
 
-### Why tfvars-per-cluster
+### Why a YAML config per cluster
 
-Each named cluster gets its own `lab/shared/clusters/<name>.tfvars` (node counts,
-cpu/mem/disk per node, `cluster_type`), versioned in the repo. If a cluster
-has no dedicated tfvars file, `lab/shared/clusters/defaults.tfvars` is used
-instead.
-This keeps sizing decisions in git history, avoids inventing a custom
-config-parsing layer (Terraform reads `.tfvars` natively), and lets you keep
+Each named cluster gets its own `cluster_configs/<name>_cluster.yaml` (node counts,
+cpu/mem/disk per node, cluster type, and which technologies it runs),
+versioned in the repo. There is no fallback file — a cluster with no config
+of its own is a validation error naming the path it looked for, not a silent
+default. This keeps sizing decisions in git history and lets you keep
 multiple named clusters' configs side by side without collision — each
 cluster is also its own Terraform workspace, so state never crosses streams.
 
-Default VM sizing (tunable per cluster tfvars):
-- mgmt: 2 CPU / 4G / 20G
-- compute ×2: 2 CPU / 3G / 20G
+Sizing lives in `cluster_configs/<name>_cluster.yaml` — one block per role,
+each with `count`, `cpu`, `memory` and `disk`. See `cluster_configs/lab1_cluster.yaml`
+for the shipped default.
 
-DC/OS wants more than this; expect a degraded/minimal install under these
-defaults on constrained hosts — bump the tfvars if you have the headroom.
+DC/OS wants more than the shipped k8s sizing; expect a degraded/minimal
+install under those defaults on constrained hosts — bump the config if you
+have the headroom.
 
 ## License ritual
 
@@ -528,8 +584,7 @@ forge-lab/
 │   │   │   ├── SpecConstants.java  # BAMBOO_URL, REPO_NAME
 │   │   │   ├── python/forgelab/    # the lab's one library (stdlib only)
 │   │   │   ├── terraform/          # main.tf/variables/outputs, modules/multipass/
-│   │   │   ├── ansible/            # site.yml, roles, generated inventory (gitignored)
-│   │   │   └── clusters/           # per-cluster tfvars (+ defaults.tfvars)
+│   │   │   └── ansible/            # site.yml, roles, generated inventory (gitignored)
 │   │   ├── provisioncluster/       # FORGE-PROV
 │   │   │   ├── ProvisionClusterSpec.java
 │   │   │   └── scripts/            # provision.py, verify.py
@@ -540,6 +595,8 @@ forge-lab/
 │   │       ├── BuildAgentImageSpec.java
 │   │       └── README.md           # build script lives in the bamboo-agent repo
 │   └── src/test/                   # java/ spec validation, python/ script tests
+├── cluster_configs/                # committed: one <name>_cluster.yaml per cluster
+│   └── <name>_cluster.yaml         # type, node sizing, enabled technologies
 ├── cluster_registered/             # GENERATED: one YAML per live cluster
 │   └── <name>_cluster_info.yml     # written by PROV, deleted by DEPROV
 ├── infra/                          # lab operations, NOT run by any plan
