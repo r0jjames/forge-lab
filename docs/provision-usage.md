@@ -85,10 +85,22 @@ none.
 | `hdfs` | `hdfs-namenode`, `hdfs-datanode` | as configured; exactly one NameNode |
 | `opensearch` | `opensearch-master` | as configured |
 | `keycloak` | *none* | 0 — it runs as pods on the k8s cluster the cluster nodes already form |
+| `splunk` | `splunk-cluster-manager`, `splunk-indexer`, `splunk-search-head` | exactly one manager, exactly one search head, at least two indexers |
 
 `clusterconfig` enforces the NameNode count itself:
 `technologies.hdfs.nodes.namenode.count` must be `1`, because non-HA HDFS has
 exactly one.
+
+It enforces Splunk's counts for the same reason — they are fixed by the
+product, not by taste. One cluster manager per cluster; one search head,
+because a search head *cluster* needs three members and a deployer this lab
+does not build; and two indexers minimum, because the manager runs
+`replication_factor = 2` and a peer cannot replicate to itself.
+
+The shipped `cluster_configs/splunk1_cluster.yaml` is the Splunk variant: it
+parks `opensearch` (the two fill the same slot) and adds 1 cluster-manager +
+2 indexers + 1 search head, for 1 management + 2 compute + 1 hdfs-namenode +
+3 hdfs-datanode + 4 splunk = **11 VMs** and 48G of RAM.
 
 The shipped `cluster_configs/lab1_cluster.yaml` declares 1 management + 2
 compute + 1 hdfs-namenode + 3 hdfs-datanode + 3 opensearch-master = **10
@@ -337,6 +349,59 @@ pattern by hand — that's a first-run step, not a broken install. See
 
 In zsh, quote any URL containing `?` or `&`, or you get `no matches found`
 from globbing before curl ever runs.
+
+### Splunk
+
+Three checks, in the order the Verify stage runs them: the search head is
+up, both indexer peers have joined the manager, and forwarded events are
+actually arriving.
+
+```
+curl -s -o /dev/null -w "%{http_code}\n" "http://<splunk-search-head-1-ip>:8000/en-US/account/login"
+```
+
+```
+200
+```
+
+Peers, from the cluster manager (self-signed cert, hence `-k`):
+
+```
+PASSWORD=$(grep splunk_admin_password ~/.forgelab/<cluster>-credentials.yml | cut -d'"' -f2)
+curl -sk -u "admin:$PASSWORD" \
+  "https://<splunk-cluster-manager-1-ip>:8089/services/cluster/manager/peers?output_mode=json" \
+  | grep -o '"status":"[^"]*"'
+```
+
+Want one `"status":"Up"` per indexer. A peer that registered once and then
+died still appears in the list with another status, so count the `Up`s, not
+the entries.
+
+Data actually flowing — the check that proves the forwarders, not just the
+cluster:
+
+```
+curl -sk -u "admin:$PASSWORD" \
+  -d 'search=search index=lab_os earliest=-1h | stats count' \
+  -d output_mode=json \
+  "https://<splunk-search-head-1-ip>:8089/services/search/jobs/export"
+```
+
+A non-zero `count` means events from other VMs reached the indexers. Zero
+with a healthy cluster points at the forwarders: check one with
+`ssh <cluster>-management-1 "sudo /opt/splunkforwarder/bin/splunk list forward-server"`,
+which should list both indexers as active forwards.
+
+Per-node service, when an instance is missing:
+
+```
+ssh lab1-splunk-indexer-1 "systemctl is-active splunk"
+ssh lab1-management-1 "systemctl is-active splunkforwarder"
+```
+
+Splunk here runs its amd64 build under emulation, so a service start takes
+about two minutes and searches run roughly 5x slower than native. Slow is
+expected; failed is not.
 
 ## 6. When the VM count is wrong
 

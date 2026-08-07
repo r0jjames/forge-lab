@@ -1,9 +1,9 @@
 # Using the cluster addons
 
-This is the day-to-day guide for the three optional technologies a
-provisioned cluster can carry — Keycloak, HDFS, and OpenSearch/Dashboards —
-plus k9s, which isn't one of them but which you'll reach for constantly
-alongside them.
+This is the day-to-day guide for the optional technologies a provisioned
+cluster can carry — Keycloak, HDFS, OpenSearch/Dashboards, and Splunk — plus
+k9s, which isn't one of them but which you'll reach for constantly alongside
+them.
 It assumes a cluster is already up. For how provisioning itself works, see
 `docs/superpowers/specs/2026-07-23-forge-lab-design.md`; for how the addons
 were built, see `docs/superpowers/specs/2026-08-03-cluster-addons-design.md`.
@@ -125,6 +125,9 @@ you can rely on these regardless of which run produced the cluster:
 | `<cluster>-hdfs-namenode-1` | HDFS NameNode, and nothing else — it stores metadata, not blocks |
 | `<cluster>-hdfs-datanode-1..N` | HDFS DataNodes (blocks live here; the NameNode is not one of them) |
 | `<cluster>-opensearch-master-1..N` | OpenSearch nodes + Dashboards (node 1 always runs Dashboards; the rest run OpenSearch only) |
+| `<cluster>-splunk-cluster-manager-1` | Splunk cluster manager, which is also the licence manager |
+| `<cluster>-splunk-indexer-1..N` | Splunk indexers: forwarder traffic (9997), HEC (8088), the indexes themselves |
+| `<cluster>-splunk-search-head-1` | Splunk search head — the UI you actually search from, port 8000 |
 
 To get the actual IPs for a cluster, either read
 `cluster_registered/<cluster>_cluster_info.yml` (written by provision as its
@@ -239,9 +242,11 @@ granted here. Without it you'd still get a report, just a much shorter one.
 
 ## 6. OpenSearch and Dashboards
 
-OpenSearch replaced Splunk in this lab because Splunk Enterprise has no
-Linux arm64 build, which made it a non-starter on Apple Silicon Multipass
-VMs.
+OpenSearch entered this lab as the stand-in for Splunk, because Splunk
+Enterprise has no Linux arm64 build. Splunk is available again (section 7)
+by running its amd64 build under emulation, so the two now overlap: they
+fill the same slot, and `cluster_configs/splunk1_cluster.yaml` parks
+OpenSearch rather than paying 18G to run both.
 
 - API: `http://<cluster>-opensearch-master-1:9200`
 - Dashboards: `http://<cluster>-opensearch-master-1:5601`
@@ -325,11 +330,117 @@ curl -s "http://<cluster>-opensearch-master-1:9200/_cat/indices/forgelab-logs*?v
 curl -s "http://<cluster>-opensearch-master-1:9200/forgelab-logs*/_search?q=source_file:%2Fvar%2Flog%2Fauth.log&size=5&pretty"
 ```
 
-## 7. Using these from an application
+## 7. Splunk
 
-These three technologies are independent services that happen to share a cluster
-— nothing here wires Keycloak, HDFS, and OpenSearch to each other, or to
-whatever you deploy. Wiring an application to them is on the application.
+Four VMs, a real distributed deployment: one cluster manager, two indexers,
+one search head. Every *other* node in the cluster runs a Universal
+Forwarder that ships its logs in.
+
+- Search head UI: `http://<cluster>-splunk-search-head-1:8000`
+- Cluster manager UI: `http://<cluster>-splunk-cluster-manager-1:8000`
+  (the indexer-clustering pages live here, not on the search head)
+- HEC: `http://<cluster>-splunk-indexer-1:8088`
+- Management/REST on every instance: `https://<host>:8089` (self-signed)
+
+Log in as `admin`; the password is `splunk_admin_password` in
+`~/.forgelab/<cluster>-credentials.yml`, alongside `splunk_hec_token` and the
+`splunk_pass4symmkey` the peers authenticate with.
+
+### It runs emulated, and that is normal
+
+Splunk Enterprise has no arm64 build, so the amd64 build runs under
+`qemu-user` translation on these arm64 VMs. Expect roughly 5x native search
+times and a two-minute service start. A search that would return instantly
+on a real indexer taking twenty seconds here is the emulation, not a broken
+cluster. The Universal Forwarders are native arm64 and pay none of this.
+
+### The indexes
+
+| Index | Fed by | Sourcetype |
+| --- | --- | --- |
+| `lab_os` | every forwarder | `syslog`, `linux_secure` |
+| `lab_k8s` | management + compute nodes | `kube:container` |
+| `lab_hdfs` | hdfs nodes | `hdfs:daemon` |
+| `lab_hec` | your own HTTP pushes | whatever you send |
+
+Each is capped at 5G (`maxTotalDataSizeMB`), so a runaway feed rotates its
+own buckets instead of filling the lab host's disk.
+
+Indexes are defined **only** on the cluster manager, in
+`/opt/splunk/etc/manager-apps/_cluster/local/`, and pushed to the peers with
+`splunk apply cluster-bundle`. Editing `indexes.conf` on an indexer directly
+is how a clustered deployment drifts apart — change it on the manager and
+push.
+
+### Starter searches
+
+```
+index=lab_os | stats count by host, sourcetype
+index=lab_k8s | timechart span=1m count by host
+index=lab_hdfs "ERROR" | stats count by source
+index=lab_os earliest=-15m | top limit=10 host
+```
+
+### Pushing your own events
+
+```
+TOKEN=$(grep splunk_hec_token ~/.forgelab/<cluster>-credentials.yml | cut -d'"' -f2)
+curl -s http://<cluster>-splunk-indexer-1:8088/services/collector/event \
+  -H "Authorization: Splunk $TOKEN" \
+  -d '{"event": {"msg": "hello", "level": "INFO"}, "sourcetype": "_json"}'
+```
+
+A `{"text":"Success","code":0}` back means it is in `lab_hec`.
+
+### Running CLI commands on a node
+
+Splunk's CLI reasserts ownership of `$SPLUNK_HOME` against the account
+recorded in `splunk-launch.conf`, so run it **as that account**, never as
+your login user through a bare `sudo`:
+
+```
+ssh <cluster>-splunk-cluster-manager-1
+sudo -u splunk /opt/splunk/bin/splunk list cluster-peers
+sudo -u splunk /opt/splunk/bin/splunk list licenses
+sudo -u splunk /opt/splunk/bin/splunk show cluster-bundle-status
+```
+
+The forwarder runs as `root` instead (it reads `/var/log/pods`, which
+kubelet keeps root-only), so on any other node:
+
+```
+sudo /opt/splunkforwarder/bin/splunk list forward-server
+```
+
+Both accept credentials through `SPLUNK_USERNAME` / `SPLUNK_PASSWORD` in the
+environment, which keeps the password out of `ps`.
+
+### The licence
+
+The cluster manager is also the licence manager, and the other three
+instances draw from its pool. A Splunk Developer Personal License lives at
+`~/.forgelab/splunk-dev-license.xml` on the lab host — never in this
+repository — and is copied to the manager during install.
+
+Without that file, every instance starts its own 60-day trial, which
+expires into Splunk Free. Free forbids distributed search and forwarder
+authentication, so this topology does not degrade gracefully — it stops
+working. Check what you have with:
+
+```
+sudo -u splunk /opt/splunk/bin/splunk list licenses
+```
+
+`group_id: Enterprise` with a 10737418240 quota is the developer licence;
+`group_id: Trial` means the file was missing at install time. Request a new
+one at https://dev.splunk.com/enterprise/dev_license, drop it at that path,
+and re-run `make addons CLUSTER=<cluster>`.
+
+## 8. Using these from an application
+
+These technologies are independent services that happen to share a cluster
+— nothing here wires Keycloak, HDFS, OpenSearch and Splunk to each other, or
+to whatever you deploy. Wiring an application to them is on the application.
 For something like `worship-lineup` (or any app that needs auth, storage,
 and logging), the shape is:
 
@@ -346,7 +457,7 @@ and logging), the shape is:
   isn't limited to the `forgelab-logs*` shape or Fluent Bit's syslog-only
   scope; it can define its own index and mapping.
 
-## 8. Troubleshooting
+## 9. Troubleshooting
 
 ### Lost credentials file
 

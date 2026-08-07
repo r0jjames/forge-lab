@@ -134,6 +134,18 @@ Full contract in `bamboo-specs/src/main/java/lab/README.md`. In short:
   together. hdfs owns two node roles — `namenode` (metadata only, no DataNode)
   and `datanode` — and `clusterconfig` requires exactly one NameNode, since
   non-HA HDFS has exactly one
+- splunk owns three node roles — `cluster-manager`, `indexer`, `search-head` —
+  with counts fixed by the product: one manager, one search head, two indexers
+  minimum (`replication_factor = 2`). Splunk Enterprise has NO arm64 build, so
+  those VMs run the amd64 build under `qemu-user` translation: ~2 min service
+  start, ~5x native search. The Universal Forwarder on every other node is
+  native arm64. Both roles pin `SPLUNK_OS_USER` in `splunk-launch.conf` before
+  the first start — Splunk otherwise records whoever ran that start and then
+  setuids to a user that cannot read its own `SPLUNK_HOME`. The forwarder runs
+  as root because kubelet keeps `/var/log/pods` root-only. The Developer
+  licence lives at `~/.forgelab/splunk-dev-license.xml`, never in the repo;
+  without it instances fall back to a trial that expires into Splunk Free,
+  which forbids distributed search
 - PROV takes two plan variables: `cluster_name` and `cluster_config` (empty
   means the config named after the cluster). Nothing overrides the config —
   it is the single source of truth, validated in `forgelab/clusterconfig.py`
