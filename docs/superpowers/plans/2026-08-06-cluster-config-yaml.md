@@ -2965,7 +2965,9 @@ multipass list | grep '^lab1-'
 multipass delete --purge lab1-management-1 lab1-compute-1 ...   # every lab1- VM
 multipass purge
 terraform -chdir=bamboo-specs/src/main/java/lab/shared/terraform workspace select default
-terraform -chdir=bamboo-specs/src/main/java/lab/shared/terraform workspace delete lab1
+# -force: terraform refuses to delete a workspace whose state is non-empty, and
+# a hand purge of the VMs does not touch that state — only `destroy` or -force does.
+terraform -chdir=bamboo-specs/src/main/java/lab/shared/terraform workspace delete -force lab1
 rm -f ~/.forgelab/ssh_config.d/lab1.conf cluster_registered/lab1_cluster_info.yml
 ```
 
