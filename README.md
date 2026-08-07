@@ -32,6 +32,11 @@ clicked together by hand.
 - **Provisioned target:** Multipass VMs, wired up with Terraform (VM
   creation) + Ansible (OS-level install: kubeadm/containerd for k8s, or the
   DC/OS installer).
+- **Opt-in technologies:** Keycloak, HDFS, OpenSearch/Dashboards and a
+  distributed Splunk deployment, each enabled per cluster in its config file.
+  See "Splunk: emulated Enterprise, native forwarders" for the one that runs
+  emulated, and [`docs/using-cluster-addons.md`](docs/using-cluster-addons.md)
+  for using them day to day.
 
 This is a personal learning lab, not production infrastructure. Design
 choices favor simplicity, local-only operation, and clear boundaries over
@@ -51,7 +56,10 @@ Mac host (32Gi+)
     ├── <name>-compute-1..N
     ├── <name>-hdfs-namenode-1
     ├── <name>-hdfs-datanode-1..N
-    └── <name>-opensearch-master-1..N    (counts/sizes from cluster_configs/<name>_cluster.yaml)
+    ├── <name>-opensearch-master-1..N
+    ├── <name>-splunk-cluster-manager-1  (amd64 Splunk under qemu-user)
+    ├── <name>-splunk-indexer-1..N       (amd64 Splunk under qemu-user)
+    └── <name>-splunk-search-head-1      (counts/sizes from cluster_configs/<name>_cluster.yaml)
 ```
 
 **CI-agnostic core:** all real logic lives in the plans' shell scripts
@@ -262,6 +270,24 @@ technologies:
         disk: 40G
   keycloak:
     enabled: true           # runs as pods on the cluster; declares no nodes
+  splunk:
+    enabled: true
+    nodes:
+      cluster-manager:      # exactly one — and it is the licence manager too
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+      indexer:              # at least two — replication_factor = 2
+        count: 2
+        cpu: 4
+        memory: 6G
+        disk: 60G
+      search-head:          # exactly one — a search head *cluster* needs three
+        count: 1
+        cpu: 4
+        memory: 6G
+        disk: 30G
 ```
 
 Every value is required when its block is enabled — there is no fallback file
@@ -394,6 +420,134 @@ the identical error every time. The `dcos` Ansible role itself is
 static-complete and lint-clean; a live `dcos` install requires genuine
 amd64 hardware (or an amd64 VM/emulation layer outside this lab's scope).
 `k8s` is unaffected and is the recommended path on Apple Silicon hosts.
+
+### Splunk: emulated Enterprise, native forwarders
+
+`cluster_configs/splunk1_cluster.yaml` builds a real distributed Splunk
+deployment — one cluster manager, two indexers, one search head — with a
+Universal Forwarder on every other node in the cluster:
+
+```bash
+make provision CLUSTER=splunk1     # 11 VMs, 48G RAM, ~45 min
+```
+
+**Splunk Enterprise has no arm64 build.** Splunk's own system requirements
+say so: *"The ARM architecture is not supported for use with Splunk
+Enterprise at this time."* Unlike the DC/OS blocker above, this one is
+worked around rather than fatal: the Enterprise VMs run the **amd64** build
+under `qemu-user` translation, which the `splunk` role sets up
+(`qemu-user-static` + binfmt, plus amd64 multiarch libc from
+`archive.ubuntu.com`, since the arm64 image's `ports.ubuntu.com` carries no
+amd64). Measured cost on a 4-cpu VM:
+
+| | Emulated |
+| --- | --- |
+| Service start | ~2 min (hence `TimeoutStartSec=600`) |
+| Search over 200k events | ~29 s, roughly 5x native |
+| Web UI response | unaffected — 8 ms |
+
+The Universal Forwarder *does* ship arm64, so the forwarders are native and
+pay none of this. Enterprise and the forwarder are pinned to one version and
+one build hash (`10.4.2` / `33c3bf42cd73`), which is what keeps them
+compatible.
+
+#### Accessing it
+
+Node addresses come from `cluster_registered/splunk1_cluster_info.yml`, and
+provisioning writes SSH aliases, so names work directly:
+
+```bash
+grep splunk_admin_password ~/.forgelab/splunk1-credentials.yml   # login: admin
+```
+
+| What | Where |
+| --- | --- |
+| Search head UI — search from here | `http://splunk1-splunk-search-head-1:8000` |
+| Cluster manager UI — indexer clustering pages | `http://splunk1-splunk-cluster-manager-1:8000` |
+| HEC, for pushing your own events | `http://splunk1-splunk-indexer-1:8088` |
+| Forwarder traffic (S2S) | indexers, port 9997 |
+
+#### Using it
+
+Four indexes arrive pre-created, each capped at 5G so a runaway feed rotates
+buckets instead of filling your disk:
+
+| Index | Fed by |
+| --- | --- |
+| `lab_os` | syslog + auth.log from every forwarder |
+| `lab_k8s` | `/var/log/pods` container logs from management/compute |
+| `lab_hdfs` | NameNode/DataNode logs, multiline-aware |
+| `lab_hec` | your own HTTP pushes |
+
+```
+index=lab_os | stats count by host, sourcetype
+index=lab_k8s | timechart span=1m count by host
+index=lab_hdfs "ERROR" | stats count by source
+```
+
+Push an event yourself:
+
+```bash
+TOKEN=$(grep splunk_hec_token ~/.forgelab/splunk1-credentials.yml | cut -d'"' -f2)
+curl -s http://splunk1-splunk-indexer-1:8088/services/collector/event \
+  -H "Authorization: Splunk $TOKEN" \
+  -d '{"event": {"msg": "hello"}, "sourcetype": "_json"}'
+# {"text":"Success","code":0}
+```
+
+Indexes and their parsing rules live **only** on the cluster manager, in
+`/opt/splunk/etc/manager-apps/_cluster/local/`, and reach the peers via
+`splunk apply cluster-bundle`. Editing them on an indexer is how a clustered
+deployment drifts apart.
+
+#### Verifying it
+
+`make provision` already runs these three as its Verify stage; run them by
+hand when something looks wrong:
+
+```bash
+PASSWORD=$(grep splunk_admin_password ~/.forgelab/splunk1-credentials.yml | cut -d'"' -f2)
+
+# 1. search head answering
+curl -s -o /dev/null -w "%{http_code}\n" http://splunk1-splunk-search-head-1:8000/en-US/account/login
+
+# 2. both indexer peers Up (self-signed cert, hence -k)
+curl -sk -u "admin:$PASSWORD" \
+  "https://splunk1-splunk-cluster-manager-1:8089/services/cluster/manager/peers?output_mode=json" \
+  | grep -o '"status":"[^"]*"'
+
+# 3. forwarded data actually landing — the check that proves the whole path
+curl -sk -u "admin:$PASSWORD" -d 'search=search index=lab_os earliest=-1h | stats count' \
+  -d output_mode=json "https://splunk1-splunk-search-head-1:8089/services/search/jobs/export"
+```
+
+If (3) is zero while (1) and (2) pass, the forwarders are the suspect. They
+have **no management port** — Splunk ships it disabled on the Universal
+Forwarder — so check one through its CLI instead of curl:
+
+```bash
+ssh splunk1-management-1 \
+  "sudo env SPLUNK_USERNAME=admin SPLUNK_PASSWORD='$PASSWORD' /opt/splunkforwarder/bin/splunk list forward-server"
+```
+
+Both indexers should be listed under `Active forwards`.
+
+#### Licence
+
+The cluster manager is the licence manager; the other three draw from its
+pool. Drop a Splunk Developer Personal License (free, 10GB/day, 6 months,
+from https://dev.splunk.com/enterprise/dev_license) at
+`~/.forgelab/splunk-dev-license.xml` — outside the repo, like every other
+key here — and the role installs it.
+
+Without it each instance runs its own 60-day trial, which expires into
+Splunk Free — and Free forbids distributed search and forwarder
+authentication, so this topology stops working rather than degrading. Check
+which you have with:
+
+```bash
+ssh splunk1-splunk-cluster-manager-1 "sudo -u splunk /opt/splunk/bin/splunk list licenses" | grep -E "group_id|quota"
+```
 
 ### Deprovisioning a cluster
 
