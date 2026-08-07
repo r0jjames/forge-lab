@@ -16,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "shared" / "python"
 
 from forgelab import credentials, paths, planvars, proc  # noqa: E402
 
-USAGE = "usage: install.py <cluster_name> [cluster_type] [addons]"
+USAGE = "usage: install.py <cluster_name> [cluster_config]"
 
 
 def extra_vars(cluster_type: str, addons, report, secret_values: dict) -> dict:
@@ -29,13 +29,14 @@ def extra_vars(cluster_type: str, addons, report, secret_values: dict) -> dict:
     }
 
 
-def run(cluster: str, cluster_type: str, addons):
+def run(cluster: str, config):
     """Install everything the cluster asks for. Returns the component report path."""
     inv = paths.INV_DIR / f"{cluster}.ini"
     if not inv.is_file():
         proc.die(f"no inventory for {cluster} — provision it first")
 
-    secret_values = credentials.ensure(cluster, addons)
+    technologies = config.enabled()
+    secret_values = credentials.ensure(cluster, technologies)
 
     # mkdtemp is 0700, and the vars file is opened 0600 and deleted after the
     # run: passwords must never reach argv, which is world-readable in `ps`.
@@ -44,7 +45,9 @@ def run(cluster: str, cluster_type: str, addons):
     varsfile = workdir / "extra-vars.json"
     handle = os.open(varsfile, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     with os.fdopen(handle, "w") as out:
-        json.dump(extra_vars(cluster_type, addons, report, secret_values), out)
+        json.dump(
+            extra_vars(config.cluster_type, technologies, report, secret_values), out
+        )
 
     try:
         proc.run(
@@ -60,13 +63,10 @@ def run(cluster: str, cluster_type: str, addons):
 
 
 def main(argv):
-    cluster, cluster_type, addons, _ = planvars.resolve(
-        argv[0] if argv else "",
-        argv[1] if len(argv) > 1 else "",
-        argv[2] if len(argv) > 2 else "",
-        USAGE,
+    cluster, config = planvars.resolve(
+        argv[0] if argv else "", argv[1] if len(argv) > 1 else "", USAGE
     )
-    run(cluster, cluster_type, addons)
+    run(cluster, config)
 
 
 if __name__ == "__main__":
