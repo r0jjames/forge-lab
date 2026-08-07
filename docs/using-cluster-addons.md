@@ -25,10 +25,29 @@ path it looked for, rather than silently building something smaller.
 technologies:
   hdfs:
     enabled: true
-    nodes: { ... }
+    nodes:
+      # Non-HA HDFS has exactly one NameNode, and it stores metadata only.
+      namenode:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+
+      datanode:
+        count: 3
+        cpu: 2
+        memory: 4G
+        disk: 40G
+
   opensearch:
     enabled: true
-    nodes: { ... }
+    nodes:
+      master:
+        count: 3
+        cpu: 2
+        memory: 6G
+        disk: 40G
+
   keycloak:
     enabled: true
 ```
@@ -38,9 +57,15 @@ in place, unvalidated, so switching it back on later doesn't mean retyping
 it:
 
 ```yaml
+technologies:
   opensearch:
-    enabled: false
-    nodes: { ... }        # kept, not read while disabled
+    enabled: false        # sizing below is kept, unvalidated, and builds nothing
+    nodes:
+      master:
+        count: 3
+        cpu: 2
+        memory: 6G
+        disk: 40G
 ```
 
 There is no per-run override: a technology's `enabled` flag in the config is
@@ -79,6 +104,14 @@ with only `keycloak` enabled builds no HDFS or OpenSearch VMs at all — not
 empty ones, none. `clusterconfig` requires exactly one NameNode whenever hdfs
 is enabled, so hdfs is one switch, not two. Keycloak owns no VM role of its
 own; it runs on the k8s cluster the management/compute nodes already form.
+
+One naming rule worth knowing if you add your own roles: VM names are
+`<cluster>-<role>-<n>`, and `provision.py` finds a role's VMs by that name
+prefix, so no role name may be a prefix of another — a `cluster_nodes` role
+literally called `hdfs` would otherwise swallow every `hdfs-namenode` and
+`hdfs-datanode` VM into its own group. `clusterconfig` rejects a config like
+that outright, before Terraform ever runs: `role 'hdfs-namenode' starts with
+role 'hdfs', so their VM names collide — rename one`.
 
 ## 2. Where things live
 
