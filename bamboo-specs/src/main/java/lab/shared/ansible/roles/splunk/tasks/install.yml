@@ -1,0 +1,63 @@
+---
+- name: Splunk service account
+  ansible.builtin.user:
+    name: "{{ splunk_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    home: "{{ splunk_home }}"
+    create_home: false
+
+- name: Controller-side cache directory
+  ansible.builtin.file:
+    path: "{{ splunk_cache_dir }}"
+    state: directory
+    mode: "0755"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Fetch the Splunk Enterprise archive once, to the controller
+  ansible.builtin.get_url:
+    url: "{{ splunk_url }}"
+    dest: "{{ splunk_cache_dir }}/{{ splunk_archive }}"
+    mode: "0644"
+  delegate_to: localhost
+  become: false
+  run_once: true
+
+- name: Unpack Splunk Enterprise
+  ansible.builtin.unarchive:
+    src: "{{ splunk_cache_dir }}/{{ splunk_archive }}"
+    dest: /opt
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    creates: "{{ splunk_home }}/bin/splunk"
+
+# Splunk records the account splunkd drops to at first start, taking it from
+# whoever performed that start. Written explicitly and beforehand, because the
+# failure mode is opaque: splunkd setuids to the wrong user and then reports
+# permission errors on files under a SPLUNK_HOME it appears to own.
+- name: Pin the account splunkd runs as
+  ansible.builtin.lineinfile:
+    path: "{{ splunk_home }}/etc/splunk-launch.conf"
+    regexp: '^#?\s*SPLUNK_OS_USER='
+    line: "SPLUNK_OS_USER={{ splunk_user }}"
+  notify: Restart splunk
+
+# Splunk reads this only while no user database exists, so it seeds the admin on
+# first start and is inert afterwards. It holds the password in cleartext, which
+# is why start.yml deletes it once the instance is up.
+- name: Seed the admin account
+  ansible.builtin.template:
+    src: user-seed.conf.j2
+    dest: "{{ splunk_home }}/etc/system/local/user-seed.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0600"
+
+- name: Splunk systemd unit
+  ansible.builtin.template:
+    src: splunk.service.j2
+    dest: /etc/systemd/system/splunk.service
+    mode: "0644"
+  notify: Restart splunk

@@ -1,0 +1,23 @@
+[Unit]
+Description=Splunk Universal Forwarder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User={{ splunkforwarder_user }}
+Group={{ splunkforwarder_user }}
+Environment=SPLUNK_HOME={{ splunkforwarder_home }}
+## --run-as-root is required rather than cosmetic: the forwarder reads
+## /var/log/pods, which kubelet keeps root-only.
+ExecStart={{ splunkforwarder_home }}/bin/splunk start --accept-license --answer-yes --no-prompt --run-as-root
+ExecStop={{ splunkforwarder_home }}/bin/splunk stop
+TimeoutStartSec=180
+TimeoutStopSec=120
+Restart=on-failure
+RestartSec=15
+LimitNOFILE=65536
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

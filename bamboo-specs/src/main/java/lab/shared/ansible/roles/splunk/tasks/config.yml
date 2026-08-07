@@ -1,0 +1,41 @@
+---
+- name: Clustering configuration
+  ansible.builtin.template:
+    src: server.conf.j2
+    dest: "{{ splunk_home }}/etc/system/local/server.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0600"
+  notify: Restart splunk
+
+- name: Forwarder and HEC inputs on the indexers
+  ansible.builtin.template:
+    src: inputs.conf.j2
+    dest: "{{ splunk_home }}/etc/system/local/inputs.conf"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0600"
+  when: splunk_node_role == 'indexer'
+  notify: Restart splunk
+
+- name: Cluster bundle directory on the manager
+  ansible.builtin.file:
+    path: "{{ splunk_home }}/etc/manager-apps/_cluster/local"
+    state: directory
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0755"
+  when: splunk_node_role == 'cluster-manager'
+
+- name: Lab indexes and their parsing rules, in the manager's bundle
+  ansible.builtin.template:
+    src: "{{ item }}.j2"
+    dest: "{{ splunk_home }}/etc/manager-apps/_cluster/local/{{ item }}"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0644"
+  loop:
+    - indexes.conf
+    - props.conf
+  when: splunk_node_role == 'cluster-manager'
+  register: splunk_bundle

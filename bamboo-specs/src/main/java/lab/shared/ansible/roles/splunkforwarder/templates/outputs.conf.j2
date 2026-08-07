@@ -1,0 +1,12 @@
+## Managed by the forgelab splunkforwarder role.
+## Every indexer is listed: the forwarder load-balances across them and keeps
+## sending if one is down, which is the whole point of having two.
+[tcpout]
+defaultGroup = {{ splunk_cluster_label | default('forgelab') }}_indexers
+
+[tcpout:{{ splunk_cluster_label | default('forgelab') }}_indexers]
+server = {{ groups['splunk_indexer'] | map('extract', hostvars, 'ansible_host') | map('regex_replace', '$', ':' ~ splunkforwarder_s2s_port) | join(',') }}
+## Switch indexer every 30s rather than per-file, so one busy log cannot pin all
+## of this host's data onto a single peer.
+autoLBFrequency = 30
+useACK = true

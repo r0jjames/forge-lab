@@ -1,8 +1,10 @@
 #!/usr/bin/env python3
 """Poll a freshly provisioned cluster until it reports healthy."""
 
+import base64
 import json
 import re
+import ssl
 import subprocess
 import sys
 import time
@@ -231,6 +233,123 @@ def _verify_opensearch(node_ip: str, expected_nodes: int):
     proc.die(f"opensearch index '{OPENSEARCH_INDEX}*' has no documents within timeout")
 
 
+# Keep in sync with roles/splunk/defaults/main.yml.
+SPLUNK_WEB_PORT = 8000
+SPLUNK_MGMT_PORT = 8089
+# Keep in sync with roles/splunkforwarder/defaults/main.yml's
+# splunkforwarder_index_os: this is the index every forwarder writes to, so it
+# is the one that proves the forwarding path end to end.
+SPLUNK_OS_INDEX = "lab_os"
+
+
+def cluster_peers_up(payload: str) -> int:
+    """How many indexer peers the cluster manager reports as Up.
+
+    Splunk's REST layer wraps everything in `entry[].content`, and a peer that
+    has registered but is down still appears — with a status that is not "Up".
+    """
+    try:
+        data = json.loads(payload)
+    except ValueError:
+        return 0
+    if not isinstance(data, dict):
+        return 0
+    entries = data.get("entry", [])
+    if not isinstance(entries, list):
+        return 0
+    return sum(
+        1
+        for entry in entries
+        if isinstance(entry, dict)
+        and isinstance(entry.get("content"), dict)
+        and entry["content"].get("status") == "Up"
+    )
+
+
+def search_result_count(payload: str) -> int:
+    """The `count` from a one-row `stats count` search export.
+
+    The export endpoint streams one JSON object per line rather than a single
+    document, so this reads the first line that carries a result and stops.
+    Splunk returns the count as a string, since every search field is text.
+    """
+    for line in payload.splitlines():
+        try:
+            data = json.loads(line)
+        except ValueError:
+            continue
+        if not isinstance(data, dict):
+            continue
+        result = data.get("result")
+        if isinstance(result, dict) and "count" in result:
+            try:
+                return int(result["count"])
+            except (TypeError, ValueError):
+                return 0
+    return 0
+
+
+def _splunk_rest(url: str, password: str, form=None) -> str:
+    """GET or POST against a Splunk management port. "" on any failure.
+
+    The management port speaks TLS with a certificate Splunk generates for
+    itself at first start, so verification is switched off deliberately rather
+    than by oversight — there is no CA in this lab to trust it against.
+    """
+    data = urllib.parse.urlencode(form).encode() if form else None
+    request = urllib.request.Request(url, data=data)
+    token = base64.b64encode(f"admin:{password}".encode()).decode()
+    request.add_header("Authorization", f"Basic {token}")
+    context = ssl._create_unverified_context()
+    try:
+        with urllib.request.urlopen(request, timeout=INTERVAL_SECONDS, context=context) as resp:
+            return resp.read().decode()
+    except (urllib.error.URLError, OSError):
+        return ""
+
+
+def _verify_splunk(search_head_ip: str, manager_ip: str, indexers: int, password: str):
+    if not password:
+        proc.die("no splunk_admin_password in the cluster's credentials file")
+
+    web = f"http://{search_head_ip}:{SPLUNK_WEB_PORT}"
+    print(f"==> verify: splunk search head at {web}")
+    for _ in range(ATTEMPTS):
+        if _http(f"{web}/en-US/account/login"):
+            break
+        time.sleep(INTERVAL_SECONDS)
+    else:
+        proc.die("splunk search head web interface never answered")
+
+    peers_url = (
+        f"https://{manager_ip}:{SPLUNK_MGMT_PORT}"
+        "/services/cluster/manager/peers?output_mode=json"
+    )
+    print(f"==> verify: {indexers} indexer peers up on {manager_ip}")
+    for _ in range(ATTEMPTS):
+        if cluster_peers_up(_splunk_rest(peers_url, password)) >= indexers:
+            break
+        time.sleep(INTERVAL_SECONDS)
+    else:
+        proc.die(f"fewer than {indexers} indexer peers Up within timeout")
+
+    # A cluster with no data in it is still a failure. This search only returns
+    # a non-zero count if forwarders on other VMs delivered events through the
+    # indexers, so it proves the whole path rather than any one hop.
+    export = f"https://{search_head_ip}:{SPLUNK_MGMT_PORT}/services/search/jobs/export"
+    form = {
+        "search": f"search index={SPLUNK_OS_INDEX} earliest=-1h | stats count",
+        "output_mode": "json",
+    }
+    for _ in range(ATTEMPTS):
+        count = search_result_count(_splunk_rest(export, password, form))
+        if count > 0:
+            print(f"splunk indexed {count} events into {SPLUNK_OS_INDEX}")
+            return
+        time.sleep(INTERVAL_SECONDS)
+    proc.die(f"index '{SPLUNK_OS_INDEX}' has no forwarded events within timeout")
+
+
 def _verify_dcos(control_ip: str):
     url = f"http://{control_ip}/"
     print(f"==> verify: DC/OS UI health on {url}")
@@ -282,6 +401,18 @@ def main(argv):
         if not node_ip:
             proc.die("opensearch is enabled but the inventory has no opensearch hosts")
         _verify_opensearch(node_ip, len(inventory.group_ips(text, "opensearch_master")))
+    if "splunk" in addons:
+        search_head_ip = inventory.first_ip(text, "splunk_search_head")
+        manager_ip = inventory.first_ip(text, "splunk_cluster_manager")
+        if not search_head_ip or not manager_ip:
+            proc.die("splunk is enabled but the inventory has no search head or "
+                     "cluster manager host")
+        _verify_splunk(
+            search_head_ip,
+            manager_ip,
+            len(inventory.group_ips(text, "splunk_indexer")),
+            secrets_values.get("splunk_admin_password", ""),
+        )
 
 
 if __name__ == "__main__":

@@ -1,0 +1,6 @@
+---
+- name: Restart splunkforwarder
+  ansible.builtin.systemd:
+    name: splunkforwarder
+    state: restarted
+    daemon_reload: true

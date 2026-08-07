@@ -1,0 +1,53 @@
+---
+splunk_version: "10.4.2"
+# Splunk Enterprise and the Universal Forwarder ship under one build hash, so
+# both artifacts are named from these two variables and cannot drift apart.
+# Keep in sync with roles/splunkforwarder/defaults/main.yml.
+splunk_build: "33c3bf42cd73"
+splunk_mirror: "https://download.splunk.com/products"
+splunk_home: /opt/splunk
+splunk_user: splunk
+
+# There is no ARM64 build of Splunk Enterprise, so amd64 is not a choice here —
+# it is the only option, and tasks/emulation.yml is what makes it run.
+splunk_arch: amd64
+splunk_archive: "splunk-{{ splunk_version }}-{{ splunk_build }}-linux-{{ splunk_arch }}.tgz"
+splunk_url: "{{ splunk_mirror }}/splunk/releases/{{ splunk_version }}/linux/{{ splunk_archive }}"
+
+# The archive is 1.7G. Fetching it once to the controller and unarchiving from
+# there means a re-provision, a second cluster, or `make addons` re-downloads
+# nothing.
+splunk_cache_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.forgelab/cache"
+
+# A Splunk Developer Personal License (10G/day). Absent, every instance falls
+# back to its own 60-day trial, which then degrades to Splunk Free — and Free
+# forbids distributed search, which this topology is built on. Never in the
+# repository: it is a license key.
+splunk_license_file: "{{ lookup('ansible.builtin.env', 'HOME') }}/.forgelab/splunk-dev-license.xml"
+
+splunk_mgmt_port: 8089
+splunk_web_port: 8000
+splunk_s2s_port: 9997
+splunk_hec_port: 8088
+# Peers replicate buckets to each other here, not over the forwarder-facing
+# S2S port.
+splunk_replication_port: 9887
+
+# The manager doubles as the licence manager, so every other instance points at
+# this one URI for both jobs.
+splunk_manager_uri: "https://{{ hostvars[groups['splunk_cluster_manager'][0]].ansible_host }}:{{ splunk_mgmt_port }}"
+
+splunk_cluster_label: forgelab
+splunk_replication_factor: 2
+splunk_search_factor: 2
+
+# The indexes the forwarders write into, and the cap on each. The cap is a real
+# bound rather than decoration: multipass disks are sparse, so a runaway
+# /var/log/pods feed would grow until it filled the lab host's disk. Splunk
+# rotating its own buckets is the failure we want instead.
+splunk_indexes: [lab_os, lab_k8s, lab_hdfs, lab_hec]
+splunk_index_max_mb: 5120
+
+# First start under emulation took just over two minutes on a 4-cpu VM, and it
+# is the slowest thing this role does.
+splunk_start_timeout: 600

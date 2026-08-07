@@ -1,0 +1,16 @@
+## Managed by the forgelab splunk role. Indexers only: this is where forwarder
+## traffic and HTTP events enter the cluster.
+[splunktcp://{{ splunk_s2s_port }}]
+disabled = 0
+
+[http]
+disabled = 0
+port = {{ splunk_hec_port }}
+## Plain HTTP: this is a lab on a private multipass network, and TLS here would
+## mean shipping a CA to every curl the user writes.
+enableSSL = 0
+
+[http://{{ splunk_cluster_label }}]
+disabled = 0
+token = {{ splunk_hec_token }}
+index = lab_hec

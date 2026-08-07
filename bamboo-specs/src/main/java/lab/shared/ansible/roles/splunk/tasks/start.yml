@@ -1,0 +1,21 @@
+---
+# Every config file this role writes is in place before the first start, so a
+# fresh instance boots straight into its clustering role instead of starting
+# standalone and being restarted into position — which under emulation would
+# cost another two minutes per node.
+- name: Start Splunk
+  ansible.builtin.systemd:
+    name: splunk
+    state: started
+    enabled: true
+    daemon_reload: true
+
+- name: Wait for the management port
+  ansible.builtin.wait_for:
+    port: "{{ splunk_mgmt_port }}"
+    timeout: "{{ splunk_start_timeout }}"
+
+- name: Drop the seed file now the admin exists
+  ansible.builtin.file:
+    path: "{{ splunk_home }}/etc/system/local/user-seed.conf"
+    state: absent

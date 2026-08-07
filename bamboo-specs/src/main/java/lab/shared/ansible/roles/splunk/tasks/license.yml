@@ -1,0 +1,34 @@
+---
+# The cluster manager is also the license manager. Without a licence file every
+# instance runs its own 60-day trial, which expires into Splunk Free — and Free
+# forbids distributed search and forwarder authentication, so this topology
+# would stop working rather than degrade. Warn, do not fail: a fresh clone with
+# no licence must still provision.
+- name: Look for a Splunk licence on the controller
+  ansible.builtin.stat:
+    path: "{{ splunk_license_file }}"
+  delegate_to: localhost
+  become: false
+  register: splunk_license
+
+- name: Warn when no licence is available
+  ansible.builtin.debug:
+    msg: >-
+      No licence at {{ splunk_license_file }} — every instance will run its own
+      60-day trial, which expires into Splunk Free and drops distributed search.
+      Request a Developer Personal License at
+      https://dev.splunk.com/enterprise/dev_license.
+  when: not splunk_license.stat.exists
+
+# Owner and mode are not incidental: splunkd runs as the splunk user, and a
+# licence it cannot read fails with `cannot read "...": Permission denied` while
+# every other command still works.
+- name: Install the licence on the cluster manager
+  ansible.builtin.copy:
+    src: "{{ splunk_license_file }}"
+    dest: "{{ splunk_home }}/etc/licenses/enterprise/forgelab-dev.xml"
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0640"
+  when: splunk_license.stat.exists
+  notify: Restart splunk

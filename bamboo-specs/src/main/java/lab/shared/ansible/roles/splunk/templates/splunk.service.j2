@@ -1,0 +1,24 @@
+[Unit]
+Description=Splunk Enterprise ({{ splunk_node_role }})
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=forking
+User={{ splunk_user }}
+Group={{ splunk_user }}
+Environment=SPLUNK_HOME={{ splunk_home }}
+ExecStart={{ splunk_home }}/bin/splunk start --accept-license --answer-yes --no-prompt
+ExecStop={{ splunk_home }}/bin/splunk stop
+# The amd64 binaries run under qemu-user translation, which makes a first start
+# take around two minutes rather than forty seconds.
+TimeoutStartSec={{ splunk_start_timeout }}
+TimeoutStopSec=360
+Restart=on-failure
+RestartSec=15
+LimitNOFILE=65536
+LimitNPROC=16384
+TasksMax=infinity
+
+[Install]
+WantedBy=multi-user.target

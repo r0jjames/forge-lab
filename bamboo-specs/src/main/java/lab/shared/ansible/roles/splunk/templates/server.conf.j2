@@ -1,0 +1,29 @@
+## Managed by the forgelab splunk role — one file, all three clustering roles,
+## so the whole contract between them is readable in one place.
+[general]
+serverName = {{ inventory_hostname }}
+
+[clustering]
+{% if splunk_node_role == 'cluster-manager' %}
+mode = manager
+cluster_label = {{ splunk_cluster_label }}
+replication_factor = {{ splunk_replication_factor }}
+search_factor = {{ splunk_search_factor }}
+{% else %}
+mode = {{ 'peer' if splunk_node_role == 'indexer' else 'searchhead' }}
+manager_uri = {{ splunk_manager_uri }}
+{% endif %}
+pass4SymmKey = {{ splunk_pass4symmkey }}
+{% if splunk_node_role == 'indexer' %}
+
+## Peers replicate buckets to each other over this port, not over the
+## forwarder-facing S2S port.
+[replication_port://{{ splunk_replication_port }}]
+{% endif %}
+{% if splunk_node_role != 'cluster-manager' %}
+
+## The cluster manager doubles as the license manager, so every other instance
+## draws from its one Developer licence pool instead of holding its own trial.
+[license]
+manager_uri = {{ splunk_manager_uri }}
+{% endif %}

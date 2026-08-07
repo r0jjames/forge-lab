@@ -172,3 +172,69 @@ def test_doc_count_is_zero_on_a_json_array():
 
 def test_doc_count_is_zero_on_a_non_integer_value():
     assert verify.doc_count('{"count": "five"}') == 0
+
+
+PEERS = """
+{"entry": [
+  {"name": "A1", "content": {"label": "splunk1-splunk-indexer-1", "status": "Up"}},
+  {"name": "B2", "content": {"label": "splunk1-splunk-indexer-2", "status": "Up"}}
+]}
+"""
+
+
+def test_cluster_peers_up_counts_the_peers_the_manager_calls_up():
+    assert verify.cluster_peers_up(PEERS) == 2
+
+
+def test_cluster_peers_up_ignores_a_registered_but_down_peer():
+    """A peer that has ever registered stays in the list after it dies, so
+    counting entries rather than statuses would call a broken cluster healthy."""
+    assert verify.cluster_peers_up(PEERS.replace('"Up"', '"Down"', 1)) == 1
+
+
+def test_cluster_peers_up_is_zero_when_no_peers_registered():
+    assert verify.cluster_peers_up('{"entry": []}') == 0
+
+
+def test_cluster_peers_up_is_zero_on_malformed_json():
+    assert verify.cluster_peers_up("<html>401 Unauthorized</html>") == 0
+
+
+def test_cluster_peers_up_is_zero_when_entry_is_not_a_list():
+    assert verify.cluster_peers_up('{"entry": {"content": {"status": "Up"}}}') == 0
+
+
+def test_cluster_peers_up_ignores_an_entry_with_no_content():
+    assert verify.cluster_peers_up('{"entry": [{"name": "A1"}]}') == 0
+
+
+EXPORT = (
+    '{"preview": true, "offset": 0}\n'
+    '{"preview": false, "offset": 0, "result": {"count": "1421"}}\n'
+)
+
+
+def test_search_result_count_reads_the_count_from_an_export_stream():
+    """The export endpoint streams one JSON object per line, and every search
+    field arrives as a string."""
+    assert verify.search_result_count(EXPORT) == 1421
+
+
+def test_search_result_count_skips_lines_that_carry_no_result():
+    assert verify.search_result_count('{"preview": true}\n{"result": {"count": "7"}}') == 7
+
+
+def test_search_result_count_is_zero_for_an_empty_index():
+    assert verify.search_result_count('{"result": {"count": "0"}}') == 0
+
+
+def test_search_result_count_is_zero_when_the_stream_has_no_results():
+    assert verify.search_result_count('{"preview": true, "offset": 0}\n') == 0
+
+
+def test_search_result_count_is_zero_on_a_non_numeric_count():
+    assert verify.search_result_count('{"result": {"count": "many"}}') == 0
+
+
+def test_search_result_count_is_zero_on_malformed_output():
+    assert verify.search_result_count("<html>401</html>") == 0

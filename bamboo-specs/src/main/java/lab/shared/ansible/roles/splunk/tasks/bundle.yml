@@ -1,0 +1,32 @@
+---
+# Runs on the manager only, and only after every node in the play has started —
+# a bundle pushed before the peers register reaches nobody.
+#
+# Credentials go through the environment rather than `-auth admin:...`: argv is
+# world-readable through `ps` to any user on the box, while /proc/<pid>/environ
+# is not.
+- name: Wait for every indexer to register with the manager
+  ansible.builtin.command: "{{ splunk_home }}/bin/splunk list cluster-peers"
+  become: true
+  become_user: "{{ splunk_user }}"
+  environment: &splunk_auth
+    SPLUNK_USERNAME: admin
+    SPLUNK_PASSWORD: "{{ splunk_admin_password }}"
+  register: splunk_peers
+  until: splunk_peers.stdout_lines | select('search', 'Up') | list | length >= (groups['splunk_indexer'] | length)
+  retries: 30
+  delay: 10
+  changed_when: false
+  no_log: true
+
+# Not a handler, despite reacting to a change: handlers are flushed before this
+# file runs (see tasks/main.yml), which is exactly when the peers are not yet
+# known to be up. A bundle pushed then reaches nobody.
+- name: Push the lab indexes to the peers  # noqa: no-handler
+  ansible.builtin.command: "{{ splunk_home }}/bin/splunk apply cluster-bundle --answer-yes"
+  become: true
+  become_user: "{{ splunk_user }}"
+  environment: *splunk_auth
+  when: splunk_bundle is changed
+  changed_when: true
+  no_log: true

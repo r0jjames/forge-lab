@@ -1,0 +1,9 @@
+## Managed by the forgelab splunk role.
+## amd64 packages come from archive.ubuntu.com; the arm64 ones this VM actually
+## runs on come from ports.ubuntu.com, which carries no amd64 at all.
+Types: deb
+URIs: http://archive.ubuntu.com/ubuntu/
+Suites: {{ ansible_distribution_release }} {{ ansible_distribution_release }}-updates {{ ansible_distribution_release }}-security
+Components: main universe
+Architectures: amd64
+Signed-By: /usr/share/keyrings/ubuntu-archive-keyring.gpg

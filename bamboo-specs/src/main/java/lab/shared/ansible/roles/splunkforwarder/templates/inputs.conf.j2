@@ -1,0 +1,38 @@
+## Managed by the forgelab splunkforwarder role. Inputs are selected by
+## inventory group, so a node ships exactly the logs it actually has.
+[default]
+host = {{ inventory_hostname }}
+
+## Every node: the operating system's own logs.
+[monitor:///var/log/syslog]
+index = {{ splunkforwarder_index_os }}
+sourcetype = syslog
+disabled = 0
+
+[monitor:///var/log/auth.log]
+index = {{ splunkforwarder_index_os }}
+sourcetype = linux_secure
+disabled = 0
+{% if inventory_hostname in groups['k8s_nodes'] | default([]) %}
+
+## Cluster nodes: container logs, straight from kubelet's directory rather than
+## the /var/log/containers symlink farm, so a rotated file is not followed twice.
+## The path segments carry pod, namespace and container, which is why the
+## sourcetype is left for Splunk to extract per-container.
+[monitor:///var/log/pods/*/*/*.log]
+index = {{ splunkforwarder_index_k8s }}
+sourcetype = kube:container
+## Kubelet writes one file per container restart; the path is the only stable
+## identity, so salt the CRC with it rather than re-reading rotated content.
+crcSalt = <SOURCE>
+disabled = 0
+{% endif %}
+{% if inventory_hostname in groups['hdfs_nodes'] | default([]) %}
+
+## HDFS nodes: NameNode and DataNode logs. Java stack traces span lines, so the
+## event breaker is a timestamp at the start of a line, not a newline.
+[monitor://{{ splunkforwarder_hdfs_log_dir }}/*.log]
+index = {{ splunkforwarder_index_hdfs }}
+sourcetype = hdfs:daemon
+disabled = 0
+{% endif %}

@@ -40,6 +40,23 @@
     - role: opensearch
       when: "'opensearch' in (addons | default('')).split(',')"
 
+- name: Splunk Enterprise on the splunk nodes
+  hosts: splunk_nodes
+  become: true
+  roles:
+    - role: splunk
+      when: "'splunk' in (addons | default('')).split(',')"
+
+# Every node that is not itself a Splunk instance forwards its logs into the
+# cluster. The forwarder is native arm64 even though Splunk Enterprise is not,
+# so this play is the fast half of the deployment.
+- name: Splunk Universal Forwarder everywhere else
+  hosts: all:!splunk_nodes
+  become: true
+  roles:
+    - role: splunkforwarder
+      when: "'splunk' in (addons | default('')).split(',')"
+
 # Hand the component facts the roles set back to provision.py, which renders
 # them into cluster_registered/<cluster>_cluster_info.yml. forgelab_components
 # is set with set_fact, which is host-scoped, and roles run on different host

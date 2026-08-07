@@ -1,0 +1,53 @@
+---
+# Splunk Enterprise has no ARM64 build — "The ARM architecture is not supported
+# for use with Splunk Enterprise at this time" (Splunk 10.4 system
+# requirements) — and Multipass runs QEMU with no access to Apple's Rosetta, so
+# the guest cannot be handed a faster translator. The amd64 build therefore runs
+# under qemu-user: binfmt routes every amd64 ELF to qemu-x86_64, which needs an
+# amd64 loader and libc on disk to link against. Measured on a 4-cpu VM: ~2 min
+# first start, ~5x native search time, responsive UI.
+
+- name: Install the amd64 user-mode emulator and its binfmt handlers
+  ansible.builtin.apt:
+    name: [qemu-user-static, binfmt-support]
+    state: present
+    update_cache: true
+
+- name: Read the architectures dpkg already accepts
+  ansible.builtin.command: dpkg --print-foreign-architectures
+  register: splunk_foreign_arches
+  changed_when: false
+
+- name: Enable the amd64 package architecture
+  ansible.builtin.command: dpkg --add-architecture amd64
+  when: "'amd64' not in splunk_foreign_arches.stdout"
+  changed_when: true
+
+- name: Read the stock apt sources
+  ansible.builtin.slurp:
+    src: /etc/apt/sources.list.d/ubuntu.sources
+  register: splunk_stock_sources
+
+# ports.ubuntu.com carries arm64 and no amd64. Without scoping the stock
+# sources, adding the amd64 architecture makes every `apt update` ask ports for
+# amd64 indexes that do not exist, and the 404s fail the run.
+- name: Scope the stock apt sources to this VM's own architecture
+  ansible.builtin.replace:
+    path: /etc/apt/sources.list.d/ubuntu.sources
+    regexp: '^(URIs: http://ports\.ubuntu\.com.*)$'
+    replace: 'Architectures: arm64\n\1'
+  when: "'Architectures:' not in (splunk_stock_sources.content | b64decode)"
+
+- name: Add the amd64 apt source
+  ansible.builtin.template:
+    src: amd64.sources.j2
+    dest: /etc/apt/sources.list.d/amd64.sources
+    mode: "0644"
+
+# Splunk ships everything else it needs under $SPLUNK_HOME/lib; these three are
+# what the dynamic loader itself resolves.
+- name: Install the amd64 runtime libraries Splunk links against
+  ansible.builtin.apt:
+    name: [libc6:amd64, libstdc++6:amd64, zlib1g:amd64]
+    state: present
+    update_cache: true

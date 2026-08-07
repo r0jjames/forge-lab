@@ -1,0 +1,16 @@
+## Managed by the forgelab splunk role, on the cluster manager only.
+##
+## Indexes belong to the cluster, not to any one peer: this file lives in the
+## manager's bundle and reaches the indexers through `splunk apply
+## cluster-bundle`. Editing indexes.conf on a peer directly is how clustered
+## Splunk deployments drift apart.
+{% for index in splunk_indexes %}
+
+[{{ index }}]
+homePath = $SPLUNK_DB/{{ index }}/db
+coldPath = $SPLUNK_DB/{{ index }}/colddb
+thawedPath = $SPLUNK_DB/{{ index }}/thaweddb
+## Without repFactor = auto a clustered index is not replicated at all.
+repFactor = auto
+maxTotalDataSizeMB = {{ splunk_index_max_mb }}
+{% endfor %}

@@ -1,0 +1,25 @@
+## Managed by the forgelab splunk role, on the cluster manager only.
+##
+## A Universal Forwarder does not parse: it ships bytes, and the indexers decide
+## where one event ends and the next begins. So the rules for the sourcetypes
+## the forwarders send live here, in the manager's bundle, not on the forwarder.
+
+## kubelet's CRI format: "<RFC3339 nano> <stream> <F|P> <message>". One line is
+## one event, so line merging is off and the timestamp is at a known offset.
+[kube:container]
+SHOULD_LINEMERGE = false
+LINE_BREAKER = ([\r\n]+)
+TIME_PREFIX = ^
+TIME_FORMAT = %Y-%m-%dT%H:%M:%S.%9N%Z
+MAX_TIMESTAMP_LOOKAHEAD = 32
+TRUNCATE = 100000
+
+## Hadoop daemon logs: a Java stack trace is one event spanning many lines, so
+## a new event starts only where a line opens with a timestamp.
+[hdfs:daemon]
+SHOULD_LINEMERGE = false
+LINE_BREAKER = ([\r\n]+)(?=\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})
+TIME_PREFIX = ^
+TIME_FORMAT = %Y-%m-%d %H:%M:%S,%3N
+MAX_TIMESTAMP_LOOKAHEAD = 23
+TRUNCATE = 100000

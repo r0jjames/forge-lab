@@ -1,0 +1,6 @@
+---
+- name: Restart splunk
+  ansible.builtin.systemd:
+    name: splunk
+    state: restarted
+    daemon_reload: true

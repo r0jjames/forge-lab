@@ -1,0 +1,38 @@
+---
+# Keep in sync with roles/splunk/defaults/main.yml: Splunk Enterprise and the
+# Universal Forwarder ship under one build hash, and a forwarder newer than its
+# indexers is not a combination this lab should discover by accident.
+splunkforwarder_version: "10.4.2"
+splunkforwarder_build: "33c3bf42cd73"
+splunkforwarder_mirror: "https://download.splunk.com/products"
+splunkforwarder_home: /opt/splunkforwarder
+
+# Unlike Splunk Enterprise, the forwarder has a native ARM64 build — this is the
+# one half of the deployment that runs unemulated.
+splunkforwarder_arch: "{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+splunkforwarder_archive: >-
+  splunkforwarder-{{ splunkforwarder_version }}-{{ splunkforwarder_build }}-linux-{{ splunkforwarder_arch }}.tgz
+splunkforwarder_url: >-
+  {{ splunkforwarder_mirror }}/universalforwarder/releases/{{ splunkforwarder_version }}/linux/{{ splunkforwarder_archive }}
+splunkforwarder_cache_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.forgelab/cache"
+
+# The forwarder runs as root because that is what its inputs require: kubelet
+# writes /var/log/pods as root:root 0640 and recreates those files constantly,
+# so no group or ACL grant survives. Splunk records the account it will drop to
+# in splunk-launch.conf at first start, taking it from whoever ran that start —
+# so the role writes it explicitly beforehand. Getting this wrong is not subtle:
+# splunkd then setuids to a user that cannot read its own SPLUNK_HOME and dies
+# with permission errors on files it appears to own.
+splunkforwarder_user: root
+
+splunkforwarder_mgmt_port: 8089
+splunkforwarder_s2s_port: 9997
+
+# Which logs go to which index. Every host ships the first block; the rest are
+# selected by inventory group, so a node contributes exactly the logs it has.
+splunkforwarder_index_os: lab_os
+splunkforwarder_index_k8s: lab_k8s
+splunkforwarder_index_hdfs: lab_hdfs
+
+# Keep in sync with roles/hdfs/defaults/main.yml's hdfs_home.
+splunkforwarder_hdfs_log_dir: /opt/hadoop/logs

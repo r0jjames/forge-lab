@@ -1,0 +1,58 @@
+---
+# A node's Splunk role is its inventory group, which the cluster config derives
+# from the same key that named the VM — so `technologies.splunk.nodes.indexer`
+# in the config, the VM `<cluster>-splunk-indexer-<n>`, the group
+# `splunk_indexer`, and this fact are all the same word.
+- name: Identify this node's Splunk role  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    splunk_node_role: >-
+      {{ 'cluster-manager' if inventory_hostname in groups['splunk_cluster_manager']
+         else 'indexer' if inventory_hostname in groups['splunk_indexer']
+         else 'search-head' }}
+
+- name: Fail early when the cluster's secrets did not reach the play
+  ansible.builtin.assert:
+    that:
+      - splunk_admin_password | default('') | length > 0
+      - splunk_pass4symmkey | default('') | length > 0
+      - splunk_hec_token | default('') | length > 0
+    fail_msg: >-
+      splunk_admin_password, splunk_pass4symmkey and splunk_hec_token come from
+      ~/.forgelab/{{ cluster_name }}-credentials.yml via install.py — run the
+      install stage rather than site.yml by hand.
+
+- name: Prepare amd64 translation for the Splunk Enterprise build
+  ansible.builtin.import_tasks: emulation.yml
+  when: ansible_architecture == "aarch64"
+
+- name: Install Splunk Enterprise
+  ansible.builtin.import_tasks: install.yml
+
+- name: Install the licence on the licence manager
+  ansible.builtin.import_tasks: license.yml
+  when: inventory_hostname in groups['splunk_cluster_manager']
+
+- name: Clustering, inputs and indexes
+  ansible.builtin.import_tasks: config.yml
+
+- name: Start Splunk
+  ansible.builtin.import_tasks: start.yml
+
+# Any config written above notified the restart handler. Flush it here, before
+# the bundle push, so the peers the manager waits for are running their final
+# configuration rather than the one they booted with.
+- name: Apply pending restarts before touching the cluster
+  ansible.builtin.meta: flush_handlers
+
+- name: Push the index bundle from the manager
+  ansible.builtin.import_tasks: bundle.yml
+  when: inventory_hostname in groups['splunk_cluster_manager']
+
+- name: Report installed components  # noqa: var-naming[no-role-prefix]
+  ansible.builtin.set_fact:
+    forgelab_components: >-
+      {{ forgelab_components | default([]) + [{'name': 'splunk',
+      'version': splunk_version,
+      'url': 'https://' ~ ansible_host ~ ':' ~ splunk_mgmt_port,
+      'ui': 'http://' ~ ansible_host ~ ':' ~ splunk_web_port}] }}
+  when: inventory_hostname in groups['splunk_search_head']
