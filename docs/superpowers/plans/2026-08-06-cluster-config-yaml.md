@@ -1234,7 +1234,7 @@ git commit -m "refactor: derive inventory groups from the cluster config"
 
 **Interfaces:**
 - Consumes: `ClusterConfig.sizing_by_role()` from Task 2.
-- Produces: `registry.nodes_from(hosts, sizing) -> list[Node]` where `sizing` is now `{role: {"cpu", "mem", "disk"}}` — a nested mapping, not the old flat `<role>_cpu` keys.
+- Produces: `registry.nodes_from(cluster, hosts, sizing) -> list[Node]` where `sizing` is now `{role: {"cpu", "mem", "disk"}}` — a nested mapping, not the old flat `<role>_cpu` keys.
 
 - [ ] **Step 1: Update the test file**
 
@@ -1312,25 +1312,29 @@ _INDEXED_RE = re.compile(r"^(?P<role>.+)-\d+$")
 with `import re` beside `import json`. Replace `nodes_from`:
 
 ```python
-def nodes_from(hosts, sizing: dict) -> list:
+def nodes_from(cluster: str, hosts, sizing: dict) -> list:
     """Build the node list from inventory [(name, ip)] pairs and config sizing.
 
     The role comes from the node's own name (`<cluster>-<role>-<n>`, the shape
-    the terraform module builds) and keys the sizing lookup. The role may itself
-    contain dashes — a technology's nodes are prefixed with their technology,
-    so `lab1-hdfs-datanode-2` is role `hdfs-datanode` — which is why this strips
-    the known cluster prefix and the trailing index rather than splitting.
+    the terraform module builds) and keys the sizing lookup. Both the cluster
+    name and the role may contain dashes — cluster names are `^[a-z0-9-]+$`, and
+    a technology's nodes are prefixed with their technology, so
+    `lab-1-hdfs-datanode-2` is cluster `lab-1` and role `hdfs-datanode`. Only
+    stripping the cluster's own prefix tells the two apart; splitting on a dash
+    cannot.
+
+    A name that does not fit the shape yields an empty role and no sizing rather
+    than failing: the cluster is already built and verified by the time this
+    runs, and a malformed name is a bug worth seeing in the file, not a reason
+    to throw the registry entry away.
     """
+    prefix = f"{cluster}-"
     nodes = []
     for name, ip in hosts:
         role = ""
         match = _INDEXED_RE.match(name)
-        if match:
-            stem = match.group("role")
-            # `<cluster>-` is everything up to the first dash: the cluster name
-            # itself is validated as ^[a-z0-9-]+$, but the VM was named by
-            # joining cluster, role and index, so the first segment is enough.
-            role = stem.split("-", 1)[1] if "-" in stem else stem
+        if match and match.group("role").startswith(prefix):
+            role = match.group("role")[len(prefix):]
         size = sizing.get(role, {})
         nodes.append(
             Node(
@@ -1373,7 +1377,7 @@ git commit -m "refactor: read node roles off dashed VM names and config sizing"
 - Test: `bamboo-specs/src/test/python/test_provision.py` (rewrite)
 
 **Interfaces:**
-- Consumes: `planvars.resolve` (Task 3), `ClusterConfig.nodes_map/.children/.roles/.sizing_by_role/.enabled` (Task 2), `inventory.render(cluster, groups, children)` (Task 5), `registry.nodes_from(hosts, sizing)` (Task 6), `install.run(cluster, config)` (Task 8).
+- Consumes: `planvars.resolve` (Task 3), `ClusterConfig.nodes_map/.children/.roles/.sizing_by_role/.enabled` (Task 2), `inventory.render(cluster, groups, children)` (Task 5), `registry.nodes_from(cluster, hosts, sizing)` (Task 6), `install.run(cluster, config)` (Task 8).
 - Produces:
   - `provision.write_tfvars(cluster, config) -> Path` — writes `terraform/.generated/<cluster>.tfvars.json`, kept after the run
   - `provision.group_nodes(cluster, config) -> dict` — `{group: [multipass.Node]}`
@@ -1832,7 +1836,7 @@ def main(argv):
         config.cluster_type,
         datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
         registry.nodes_from(
-            inventory.parse_hosts(inv.read_text()), config.sizing_by_role()
+            cluster, inventory.parse_hosts(inv.read_text()), config.sizing_by_role()
         ),
         registry.read_components(report),
         credentials=(

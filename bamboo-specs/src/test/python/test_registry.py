@@ -35,7 +35,7 @@ def render_lab1(nodes=None, components=None):
         "lab1",
         "k8s",
         "2026-08-03T14:22:11Z",
-        registry.nodes_from(HOSTS, SIZING) if nodes is None else nodes,
+        registry.nodes_from("lab1", HOSTS, SIZING) if nodes is None else nodes,
         COMPONENTS if components is None else components,
     )
 
@@ -110,7 +110,7 @@ def test_renders_empty_collections_as_flow_sequences():
 
 
 def test_reads_role_and_sizing_for_each_node():
-    management, compute = registry.nodes_from(HOSTS, SIZING)
+    management, compute = registry.nodes_from("lab1", HOSTS, SIZING)
     assert (management.role, management.ip, management.mem) == (
         "management", "192.168.252.10", "4G",
     )
@@ -127,17 +127,49 @@ def test_reads_a_dashed_technology_role_off_the_name():
         ("lab1-hdfs-namenode-1", "192.168.252.20"),
         ("lab1-hdfs-datanode-2", "192.168.252.22"),
     ]
-    namenode, datanode = registry.nodes_from(hosts, sizing)
+    namenode, datanode = registry.nodes_from("lab1", hosts, sizing)
     assert (namenode.role, namenode.disk) == ("hdfs-namenode", "20G")
     assert (datanode.role, datanode.disk) == ("hdfs-datanode", "40G")
 
 
 def test_omits_sizing_the_config_does_not_carry():
     text = registry.render(
-        "lab1", "k8s", "2026-08-03T14:22:11Z", registry.nodes_from(HOSTS, {}), []
+        "lab1", "k8s", "2026-08-03T14:22:11Z", registry.nodes_from("lab1", HOSTS, {}), []
     )
     assert "cpu:" not in text
     assert "role: management" in text
+
+
+def test_a_dashed_cluster_name_does_not_eat_the_role():
+    """Cluster names may contain dashes, so only the cluster's own prefix can
+    be stripped — splitting on the first dash would give role '1-compute'."""
+    hosts = [("lab-1-compute-1", "192.168.252.11")]
+    sizing = {"compute": {"cpu": "2", "mem": "3G", "disk": "20G"}}
+    node, = registry.nodes_from("lab-1", hosts, sizing)
+    assert (node.role, node.mem) == ("compute", "3G")
+
+
+def test_a_dashed_cluster_name_keeps_a_dashed_technology_role():
+    hosts = [("lab-1-hdfs-datanode-2", "192.168.252.22")]
+    sizing = {"hdfs-datanode": {"cpu": "2", "mem": "4G", "disk": "40G"}}
+    node, = registry.nodes_from("lab-1", hosts, sizing)
+    assert (node.role, node.disk) == ("hdfs-datanode", "40G")
+
+
+def test_a_name_from_another_cluster_yields_no_role():
+    """The prefix must match: a stray VM is recorded, not mis-attributed."""
+    node, = registry.nodes_from("lab1", [("other-compute-1", "1.2.3.4")], {})
+    assert (node.role, node.cpu) == ("", "")
+
+
+def test_a_name_with_no_role_segment_yields_no_role():
+    node, = registry.nodes_from("lab1", [("lab1-1", "1.2.3.4")], {})
+    assert node.role == ""
+
+
+def test_an_unparseable_name_is_recorded_rather_than_raising():
+    node, = registry.nodes_from("lab1", [("nodashes", "1.2.3.4")], {})
+    assert (node.name, node.role, node.ip) == ("nodashes", "", "1.2.3.4")
 
 
 def test_reads_the_component_report(tmp_path):
