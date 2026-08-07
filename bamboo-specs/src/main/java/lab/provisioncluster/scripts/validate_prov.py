@@ -18,8 +18,6 @@ from forgelab import planvars, proc  # noqa: E402
 
 USAGE = "usage: validate_prov.py <cluster_name> [cluster_config]"
 
-_HEAD = f"{'ROLE':<14} {'N':>3} {'CPU':>3} {'MEM':<5} {'DISK':<5}"
-
 
 def _memory_gb(size: str) -> int:
     """A multipass size as whole gigabytes. 512M rounds down to 0, which is
@@ -35,17 +33,22 @@ def report(cluster: str, config) -> list:
     host runs out of memory eight VMs in.
     """
     specs = config.roles()
+    # Widen the role column to the longest role actually printed, with a floor
+    # so the "ROLE" header itself always fits — a fixed width breaks alignment
+    # the moment a role (e.g. opensearch-master) runs longer than it guessed.
+    width = max([len("ROLE")] + [len(spec.role) for spec in specs])
+    head = f"{'ROLE':<{width}} {'N':>3} {'CPU':>3} {'MEM':<5} {'DISK':<5}"
     lines = [
         f"==> cluster_name   {cluster}",
         f"==> cluster_type   {config.cluster_type}",
         f"==> technologies   {','.join(config.enabled()) or 'none'}",
         f"==> config         {Path(config.source).name}",
         "",
-        _HEAD,
+        head,
     ]
     for spec in specs:
         lines.append(
-            f"{spec.role:<14} {spec.count:>3} {spec.cpu:>3} "
+            f"{spec.role:<{width}} {spec.count:>3} {spec.cpu:>3} "
             f"{spec.memory:<5} {spec.disk:<5}"
         )
     vms = sum(s.count for s in specs)

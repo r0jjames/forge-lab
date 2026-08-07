@@ -113,12 +113,12 @@ $ bamboo-specs/src/main/java/lab/provisioncluster/scripts/validate_prov.py lab1
 ==> technologies   hdfs,opensearch,keycloak
 ==> config         lab1_cluster.yaml
 
-ROLE             N CPU MEM   DISK
-management       1   2 4G    20G
-compute          2   2 3G    20G
-hdfs-namenode    1   2 4G    20G
-hdfs-datanode    3   2 4G    40G
-opensearch-master   3   2 6G    40G
+ROLE                N CPU MEM   DISK 
+management          1   2 4G    20G  
+compute             2   2 3G    20G  
+hdfs-namenode       1   2 4G    20G  
+hdfs-datanode       3   2 4G    40G  
+opensearch-master   3   2 6G    40G  
 
 ==> total          10 VMs, 20 vCPU, 44G RAM
 ```
