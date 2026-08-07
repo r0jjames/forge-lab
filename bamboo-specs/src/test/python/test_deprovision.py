@@ -105,7 +105,7 @@ def test_does_not_sweep_when_the_backend_is_clean(lab):
 
 def test_removes_the_generated_inventory_and_ssh_config(lab):
     (lab.inv_dir / "lab1.ini").write_text("[management]\n")
-    (lab.ssh_dir / "lab1.conf").write_text("Host lab1-mgmt-1\n")
+    (lab.ssh_dir / "lab1.conf").write_text("Host lab1-management-1\n")
     deprovision.main(["lab1"])
     assert not (lab.inv_dir / "lab1.ini").exists()
     assert not (lab.ssh_dir / "lab1.conf").exists()

@@ -1,5 +1,5 @@
 ---
-- name: Node role — master on mgmt[0], slave elsewhere
+- name: Node role — master on management[0], slave elsewhere
   ansible.builtin.set_fact:
     dcos_node_role: "{{ 'master' if inventory_hostname == groups['management'][0] else 'slave' }}"
 

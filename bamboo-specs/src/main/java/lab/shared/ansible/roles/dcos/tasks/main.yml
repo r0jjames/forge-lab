@@ -1,5 +1,5 @@
 ---
-- name: Bootstrap DC/OS on mgmt[0] (genconf + serve)
+- name: Bootstrap DC/OS on management[0] (genconf + serve)
   ansible.builtin.import_tasks: bootstrap.yml
   when: inventory_hostname == groups['management'][0]
 
