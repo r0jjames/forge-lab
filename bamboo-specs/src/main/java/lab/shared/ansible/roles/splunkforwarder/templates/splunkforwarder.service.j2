@@ -4,20 +4,29 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
+## Type=simple with Splunk's own launcher — see roles/splunk's unit for why a
+## Type=forking wrapper around `splunk start` flaps instead of starting.
+Type=simple
 User={{ splunkforwarder_user }}
 Group={{ splunkforwarder_user }}
 Environment=SPLUNK_HOME={{ splunkforwarder_home }}
-## --run-as-root is required rather than cosmetic: the forwarder reads
+## Running as root is required rather than cosmetic: the forwarder reads
 ## /var/log/pods, which kubelet keeps root-only.
-ExecStart={{ splunkforwarder_home }}/bin/splunk start --accept-license --answer-yes --no-prompt --run-as-root
-ExecStop={{ splunkforwarder_home }}/bin/splunk stop
+ExecStart={{ splunkforwarder_home }}/bin/splunk _internal_launch_under_systemd --accept-license --answer-yes --no-prompt
+KillMode=mixed
+KillSignal=SIGINT
 TimeoutStartSec=180
 TimeoutStopSec=120
-Restart=on-failure
+## Splunk's own exit-code contract: 51 means "do not restart me", 52 means
+## "restart me now".
+SuccessExitStatus=51 52
+RestartPreventExitStatus=51
+RestartForceExitStatus=52
+Restart=always
 RestartSec=15
 LimitNOFILE=65536
 TasksMax=infinity
+Delegate=true
 
 [Install]
 WantedBy=multi-user.target

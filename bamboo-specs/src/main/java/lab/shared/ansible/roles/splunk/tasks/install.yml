@@ -1,4 +1,14 @@
 ---
+# Ansible hands its temporary files to a `become_user` with setfacl, and falls
+# back to a chmod ACL syntax Linux does not accept when setfacl is missing —
+# failing with "Failed to set permissions on the temporary files". tasks/bundle.yml
+# runs the Splunk CLI as the splunk user, so this is a prerequisite for it.
+- name: ACL support, so tasks can run as the splunk user
+  ansible.builtin.apt:
+    name: acl
+    state: present
+    update_cache: true
+
 - name: Splunk service account
   ansible.builtin.user:
     name: "{{ splunk_user }}"
@@ -32,6 +42,20 @@
     owner: "{{ splunk_user }}"
     group: "{{ splunk_user }}"
     creates: "{{ splunk_home }}/bin/splunk"
+
+# The archive ships splunk-launch.conf.default and nothing else; Splunk copies
+# it into place on first start. Since the point of the next task is to get in
+# before that start, the file has to be materialised here — and never
+# overwritten afterwards, hence force: false.
+- name: Materialise splunk-launch.conf from the shipped default
+  ansible.builtin.copy:
+    src: "{{ splunk_home }}/etc/splunk-launch.conf.default"
+    dest: "{{ splunk_home }}/etc/splunk-launch.conf"
+    remote_src: true
+    force: false
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0644"
 
 # Splunk records the account splunkd drops to at first start, taking it from
 # whoever performed that start. Written explicitly and beforehand, because the

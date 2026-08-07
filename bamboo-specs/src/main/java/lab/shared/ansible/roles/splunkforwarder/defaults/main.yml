@@ -25,7 +25,9 @@ splunkforwarder_cache_dir: "{{ lookup('ansible.builtin.env', 'HOME') }}/.forgela
 # with permission errors on files it appears to own.
 splunkforwarder_user: root
 
-splunkforwarder_mgmt_port: 8089
+# Where this forwarder sends data. There is deliberately no management port
+# here: a Universal Forwarder ships with it disabled, and this lab has no reason
+# to turn it on — nothing here drives a forwarder over REST.
 splunkforwarder_s2s_port: 9997
 
 # Which logs go to which index. Every host ships the first block; the rest are

@@ -20,6 +20,17 @@
       https://dev.splunk.com/enterprise/dev_license.
   when: not splunk_license.stat.exists
 
+# Splunk creates this directory at first start, and the licence has to be in
+# place before that start — so the role creates it rather than waiting.
+- name: Licence directory
+  ansible.builtin.file:
+    path: "{{ splunk_home }}/etc/licenses/enterprise"
+    state: directory
+    owner: "{{ splunk_user }}"
+    group: "{{ splunk_user }}"
+    mode: "0755"
+  when: splunk_license.stat.exists
+
 # Owner and mode are not incidental: splunkd runs as the splunk user, and a
 # licence it cannot read fails with `cannot read "...": Permission denied` while
 # every other command still works.

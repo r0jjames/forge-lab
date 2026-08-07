@@ -33,6 +33,19 @@
     group: "{{ splunkforwarder_user }}"
     creates: "{{ splunkforwarder_home }}/bin/splunk"
 
+# The archive ships splunk-launch.conf.default only; Splunk copies it into place
+# on first start. The next task has to get in before that, so materialise it
+# here — and never overwrite it afterwards, hence force: false.
+- name: Materialise splunk-launch.conf from the shipped default
+  ansible.builtin.copy:
+    src: "{{ splunkforwarder_home }}/etc/splunk-launch.conf.default"
+    dest: "{{ splunkforwarder_home }}/etc/splunk-launch.conf"
+    remote_src: true
+    force: false
+    owner: "{{ splunkforwarder_user }}"
+    group: "{{ splunkforwarder_user }}"
+    mode: "0644"
+
 # Before the first start, not after: splunkd reads this to decide which account
 # to run as, and a first start performed by anyone else bakes that account in
 # instead. Everything under SPLUNK_HOME then belongs to the wrong user.
@@ -83,9 +96,12 @@
     enabled: true
     daemon_reload: true
 
-- name: Wait for the management port
+# Not the management port: a Universal Forwarder ships with it disabled, so
+# unlike Splunk Enterprise it opens no socket to wait on. The pid file is what
+# says splunkd got past its own prerequisite checks.
+- name: Wait for splunkd to come up
   ansible.builtin.wait_for:
-    port: "{{ splunkforwarder_mgmt_port }}"
+    path: "{{ splunkforwarder_home }}/var/run/splunk/splunkd.pid"
     timeout: 180
 
 - name: Drop the seed file now the admin exists

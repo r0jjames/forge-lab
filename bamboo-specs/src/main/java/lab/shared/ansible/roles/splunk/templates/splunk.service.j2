@@ -4,21 +4,33 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-Type=forking
+## Type=simple with Splunk's own launcher, which is what `splunk enable
+## boot-start -systemd-managed 1` generates. A Type=forking unit wrapping
+## `splunk start` looks natural and does not work: systemd guesses the wrong
+## main PID, times out while splunkd is in fact running, and its restart then
+## trips over the daemon the failed start left behind.
+Type=simple
 User={{ splunk_user }}
 Group={{ splunk_user }}
 Environment=SPLUNK_HOME={{ splunk_home }}
-ExecStart={{ splunk_home }}/bin/splunk start --accept-license --answer-yes --no-prompt
-ExecStop={{ splunk_home }}/bin/splunk stop
-# The amd64 binaries run under qemu-user translation, which makes a first start
-# take around two minutes rather than forty seconds.
+ExecStart={{ splunk_home }}/bin/splunk _internal_launch_under_systemd --accept-license --answer-yes --no-prompt
+KillMode=mixed
+KillSignal=SIGINT
+## The amd64 binaries run under qemu-user translation, which makes a first
+## start take around two minutes rather than forty seconds.
 TimeoutStartSec={{ splunk_start_timeout }}
 TimeoutStopSec=360
-Restart=on-failure
+## Splunk's own exit-code contract: 51 means "do not restart me", 52 means
+## "restart me now".
+SuccessExitStatus=51 52
+RestartPreventExitStatus=51
+RestartForceExitStatus=52
+Restart=always
 RestartSec=15
 LimitNOFILE=65536
 LimitNPROC=16384
 TasksMax=infinity
+Delegate=true
 
 [Install]
 WantedBy=multi-user.target
