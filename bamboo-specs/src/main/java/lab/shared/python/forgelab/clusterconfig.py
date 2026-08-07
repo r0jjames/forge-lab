@@ -104,7 +104,7 @@ CLUSTER_TYPES = ("k8s", "dcos")
 
 # k9s is deliberately absent: it is a kubectl TUI, installed unconditionally by
 # the k8s role, not something a cluster opts into.
-TECHNOLOGIES = ("keycloak", "hdfs", "opensearch")
+TECHNOLOGIES = ("keycloak", "hdfs", "opensearch", "splunk")
 
 # Keycloak runs as pods on the Kubernetes cluster the cluster_nodes form, so it
 # is the one technology that owns no VM role.
@@ -118,7 +118,16 @@ TECHNOLOGY_NODES = {
     "keycloak": (),
     "hdfs": ("namenode", "datanode"),
     "opensearch": ("master",),
+    "splunk": ("cluster-manager", "indexer", "search-head"),
 }
+
+# Splunk's roles are not interchangeable and their counts are fixed by the
+# product, not by taste: one cluster manager per cluster, one search head (a
+# search head *cluster* needs three members and a deployer, which this lab does
+# not build), and at least two indexers because the manager is configured with
+# replication_factor = 2 and a peer cannot replicate to itself.
+SPLUNK_EXACT_COUNTS = (("cluster-manager", 1), ("search-head", 1))
+SPLUNK_MIN_INDEXERS = 2
 
 # The k8s and dcos roles both take their control node from groups['management'][0],
 # and the Keycloak play targets management[0].
@@ -349,6 +358,19 @@ def from_text(text: str, source: str) -> ClusterConfig:
         if len(namenodes) != 1 or namenodes[0].count != 1:
             _at(source, "hdfs has exactly one NameNode: "
                         "technologies.hdfs.nodes.namenode.count must be 1")
+
+    if "splunk" in enabled:
+        counts = {spec.role: spec.count for spec in tech_roles["splunk"]}
+        for node, expected in SPLUNK_EXACT_COUNTS:
+            if counts.get(f"splunk-{node}") != expected:
+                _at(source, f"splunk has exactly one {node}: "
+                            f"technologies.splunk.nodes.{node}.count must be "
+                            f"{expected}")
+        if counts.get("splunk-indexer", 0) < SPLUNK_MIN_INDEXERS:
+            _at(source, f"technologies.splunk.nodes.indexer.count must be at "
+                        f"least {SPLUNK_MIN_INDEXERS} — the cluster manager runs "
+                        f"replication_factor = 2 and a peer cannot replicate to "
+                        f"itself")
 
     return ClusterConfig(source, cluster_type, cluster_roles, tech_roles, enabled)
 

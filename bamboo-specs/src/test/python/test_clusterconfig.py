@@ -258,7 +258,9 @@ def test_rejects_a_cpu_below_one():
 
 
 def test_rejects_an_unknown_technology():
-    with pytest.raises(LabError, match=r"unknown technology 'kafka'; known: keycloak hdfs opensearch"):
+    with pytest.raises(
+        LabError, match=r"unknown technology 'kafka'; known: keycloak hdfs opensearch splunk"
+    ):
         config(CONFIG.replace("  keycloak:\n    enabled: true", "  kafka:\n    enabled: true"))
 
 
@@ -311,6 +313,93 @@ def test_hdfs_must_have_exactly_one_namenode():
     )
     with pytest.raises(LabError, match="hdfs has exactly one NameNode"):
         config(text)
+
+
+SPLUNK = """
+  splunk:
+    enabled: true
+    nodes:
+      cluster-manager:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+      indexer:
+        count: 2
+        cpu: 4
+        memory: 6G
+        disk: 60G
+      search-head:
+        count: 1
+        cpu: 4
+        memory: 6G
+        disk: 30G
+"""
+
+
+def with_splunk(replacement=""):
+    """CONFIG with splunk appended, optionally with one node block edited."""
+    text = CONFIG + SPLUNK.lstrip("\n")
+    return text.replace(*replacement) if replacement else text
+
+
+def test_splunk_roles_and_groups_carry_the_technology_prefix():
+    roles = [r.role for r in config(with_splunk()).roles()]
+    groups = [r.group for r in config(with_splunk()).roles()]
+    assert roles[-3:] == [
+        "splunk-cluster-manager", "splunk-indexer", "splunk-search-head",
+    ]
+    assert groups[-3:] == [
+        "splunk_cluster_manager", "splunk_indexer", "splunk_search_head",
+    ]
+
+
+def test_splunk_builds_one_vm_per_indexer():
+    nodes = config(with_splunk()).nodes_map("splunk1")
+    assert nodes["splunk1-splunk-indexer-2"] == {
+        "cpus": 4, "memory": "6G", "disk": "60G",
+    }
+    assert "splunk1-splunk-indexer-3" not in nodes
+
+
+def test_splunk_gets_a_children_group_like_every_other_technology():
+    assert config(with_splunk()).children()["splunk_nodes"] == [
+        "splunk_cluster_manager", "splunk_indexer", "splunk_search_head",
+    ]
+
+
+def test_splunk_must_have_exactly_one_cluster_manager():
+    text = with_splunk(("      cluster-manager:\n        count: 1",
+                        "      cluster-manager:\n        count: 2"))
+    with pytest.raises(LabError, match="splunk has exactly one cluster-manager"):
+        config(text)
+
+
+def test_splunk_must_have_exactly_one_search_head():
+    text = with_splunk(("      search-head:\n        count: 1",
+                        "      search-head:\n        count: 2"))
+    with pytest.raises(LabError, match="splunk has exactly one search-head"):
+        config(text)
+
+
+def test_splunk_needs_two_indexers_for_replication():
+    """replication_factor = 2 on the manager: one peer cannot replicate to
+    itself, and the cluster would sit permanently un-replicated."""
+    text = with_splunk(("      indexer:\n        count: 2",
+                        "      indexer:\n        count: 1"))
+    with pytest.raises(
+        LabError,
+        match=r"technologies.splunk.nodes.indexer.count must be at least 2",
+    ):
+        config(text)
+
+
+def test_splunk_disabled_keeps_its_sizing_unvalidated():
+    """The parked-sizing rule must hold for splunk's count rules too."""
+    text = with_splunk(("  splunk:\n    enabled: true", "  splunk:\n    enabled: false"))
+    text = text.replace("      indexer:\n        count: 2",
+                        "      indexer:\n        count: 1")
+    assert "splunk" not in config(text).enabled()
 
 
 def test_keycloak_must_not_declare_nodes():

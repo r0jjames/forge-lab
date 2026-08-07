@@ -26,6 +26,14 @@ def test_generate_covers_keycloak_admin_and_app_user():
     ]
 
 
+def test_generate_covers_splunks_admin_hec_and_cluster_key():
+    assert sorted(credentials.generate(["splunk"])) == [
+        "splunk_admin_password",
+        "splunk_hec_token",
+        "splunk_pass4symmkey",
+    ]
+
+
 def test_generate_is_empty_for_an_addon_with_no_secrets():
     assert credentials.generate(["hdfs"]) == {}
 

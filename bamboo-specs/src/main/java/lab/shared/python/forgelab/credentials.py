@@ -16,8 +16,17 @@ from . import paths
 # The generated secrets each addon needs. An addon absent from this map (hdfs,
 # opensearch) simply has none — opensearch runs with its security plugin
 # disabled, the normal posture for a local lab.
+#
+# Splunk cannot take that posture: its admin password is baked into the instance
+# at first start, the indexer cluster's peers authenticate to the manager with a
+# shared pass4SymmKey, and HEC rejects a push without its token.
 SECRET_KEYS = {
     "keycloak": ("keycloak_admin_password", "keycloak_app_user_password"),
+    "splunk": (
+        "splunk_admin_password",
+        "splunk_hec_token",
+        "splunk_pass4symmkey",
+    ),
 }
 
 # token_urlsafe(18) is 24 characters of [A-Za-z0-9_-]: comfortably long, and
