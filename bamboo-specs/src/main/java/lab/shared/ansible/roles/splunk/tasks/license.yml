@@ -34,12 +34,25 @@
 # Owner and mode are not incidental: splunkd runs as the splunk user, and a
 # licence it cannot read fails with `cannot read "...": Permission denied` while
 # every other command still works.
-- name: Install the licence on the cluster manager
+# The extension is load-bearing. Splunk ignores anything else in this directory
+# and says so only in splunkd.log, while `splunk list licenses` keeps reporting
+# the trial as though no licence had been installed at all:
+#   ERROR LMStack - License should have extension of '.lic' or '.license',
+#   ignoring file forgelab-dev.xml
+- name: Install the licence
   ansible.builtin.copy:
     src: "{{ splunk_license_file }}"
-    dest: "{{ splunk_home }}/etc/licenses/enterprise/forgelab-dev.xml"
+    dest: "{{ splunk_home }}/etc/licenses/enterprise/forgelab-dev.lic"
     owner: "{{ splunk_user }}"
     group: "{{ splunk_user }}"
     mode: "0640"
   when: splunk_license.stat.exists
+  notify: Restart splunk
+
+# Clusters built before the extension was corrected have the ignored file still
+# sitting there; leaving it would keep that misleading log error coming.
+- name: Remove the licence under its ignored name
+  ansible.builtin.file:
+    path: "{{ splunk_home }}/etc/licenses/enterprise/forgelab-dev.xml"
+    state: absent
   notify: Restart splunk
