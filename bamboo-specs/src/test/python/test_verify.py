@@ -3,7 +3,7 @@ import verify
 
 def test_nodes_ready_accepts_an_all_ready_cluster():
     out = (
-        "lab1-mgmt-1     Ready    control-plane   5m    v1.29.0\n"
+        "lab1-management-1     Ready    control-plane   5m    v1.29.0\n"
         "lab1-compute-1  Ready    <none>          4m    v1.29.0\n"
     )
     assert verify.nodes_ready(out)
@@ -11,7 +11,7 @@ def test_nodes_ready_accepts_an_all_ready_cluster():
 
 def test_nodes_ready_rejects_a_node_still_joining():
     out = (
-        "lab1-mgmt-1     Ready       control-plane   5m   v1.29.0\n"
+        "lab1-management-1     Ready       control-plane   5m   v1.29.0\n"
         "lab1-compute-1  NotReady    <none>          1m   v1.29.0\n"
     )
     assert not verify.nodes_ready(out)

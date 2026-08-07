@@ -53,7 +53,7 @@ def default_storage_class(text: str) -> str:
     return ""
 
 
-def _ssh(mgmt_ip: str, command: str) -> subprocess.CompletedProcess:
+def _ssh(control_ip: str, command: str) -> subprocess.CompletedProcess:
     """Run `command` on the remote host.
 
     No `stdin` parameter: nothing here needs one currently. If a future
@@ -63,17 +63,17 @@ def _ssh(mgmt_ip: str, command: str) -> subprocess.CompletedProcess:
     the box, so interpolation is the one thing to avoid.
     """
     return subprocess.run(
-        ["ssh", "-i", str(paths.SSH_KEY), *SSH_OPTS, f"ubuntu@{mgmt_ip}", command],
+        ["ssh", "-i", str(paths.SSH_KEY), *SSH_OPTS, f"ubuntu@{control_ip}", command],
         capture_output=True,
         text=True,
     )
 
 
-def _verify_k8s(mgmt_ip: str):
+def _verify_k8s(control_ip: str):
     timeout = ATTEMPTS * INTERVAL_SECONDS
     print(f"==> verify: waiting for all nodes Ready (timeout {timeout}s)")
     for _ in range(ATTEMPTS):
-        result = _ssh(mgmt_ip, "kubectl get nodes --no-headers")
+        result = _ssh(control_ip, "kubectl get nodes --no-headers")
         if result.returncode == 0 and nodes_ready(result.stdout):
             print(result.stdout, end="")
             break
@@ -81,10 +81,10 @@ def _verify_k8s(mgmt_ip: str):
     else:
         proc.die("nodes not all Ready within timeout")
 
-    result = _ssh(mgmt_ip, "kubectl get storageclass --no-headers")
+    result = _ssh(control_ip, "kubectl get storageclass --no-headers")
     if not default_storage_class(result.stdout):
         proc.die("no default StorageClass — local-path-provisioner did not install")
-    result = _ssh(mgmt_ip, "k9s version --short")
+    result = _ssh(control_ip, "k9s version --short")
     if result.returncode != 0:
         proc.die("k9s is not installed on the control plane node")
     print("default StorageClass and k9s present")
@@ -112,8 +112,8 @@ def _http(url: str, form=None) -> str:
         return ""
 
 
-def _verify_keycloak(mgmt_ip: str, password: str):
-    base = f"http://{mgmt_ip}:{KEYCLOAK_PORT}/realms/{KEYCLOAK_REALM}"
+def _verify_keycloak(control_ip: str, password: str):
+    base = f"http://{control_ip}:{KEYCLOAK_PORT}/realms/{KEYCLOAK_REALM}"
     print(f"==> verify: keycloak realm at {base}")
     for _ in range(ATTEMPTS):
         if field_from(_http(f"{base}/.well-known/openid-configuration"), "issuer"):
@@ -231,8 +231,8 @@ def _verify_opensearch(node_ip: str, expected_nodes: int):
     proc.die(f"opensearch index '{OPENSEARCH_INDEX}*' has no documents within timeout")
 
 
-def _verify_dcos(mgmt_ip: str):
-    url = f"http://{mgmt_ip}/"
+def _verify_dcos(control_ip: str):
+    url = f"http://{control_ip}/"
     print(f"==> verify: DC/OS UI health on {url}")
     for _ in range(ATTEMPTS):
         try:
@@ -255,33 +255,33 @@ def main(argv):
     if not inv.is_file():
         proc.die(f"no inventory for {cluster}")
     text = inv.read_text()
-    mgmt_ip = inventory.mgmt_ip(text)
-    if not mgmt_ip:
-        proc.die("no mgmt host in inventory")
+    control_ip = inventory.control_ip(text)
+    if not control_ip:
+        proc.die("no management host in inventory")
 
     if cluster_type == "k8s":
-        _verify_k8s(mgmt_ip)
+        _verify_k8s(control_ip)
     elif cluster_type == "dcos":
-        _verify_dcos(mgmt_ip)
+        _verify_dcos(control_ip)
     else:
         proc.die(f"unknown cluster_type: {cluster_type}")
 
     secrets_values = credentials.read(cluster)
     if "keycloak" in addons:
-        _verify_keycloak(mgmt_ip, secrets_values.get("keycloak_app_user_password", ""))
+        _verify_keycloak(control_ip, secrets_values.get("keycloak_app_user_password", ""))
     if "hdfs" in addons:
-        namenode_ip = inventory.first_ip(text, "namenode")
+        namenode_ip = inventory.first_ip(text, "hdfs_namenode")
         if not namenode_ip:
             proc.die("hdfs is enabled but the inventory has no namenode host")
-        datanodes = len(inventory.group_ips(text, "datanode"))
+        datanodes = len(inventory.group_ips(text, "hdfs_datanode"))
         if not datanodes:
             proc.die("hdfs is enabled but the inventory has no datanode hosts")
         _verify_hdfs(namenode_ip, datanodes)
     if "opensearch" in addons:
-        node_ip = inventory.first_ip(text, "opensearch")
+        node_ip = inventory.first_ip(text, "opensearch_master")
         if not node_ip:
             proc.die("opensearch is enabled but the inventory has no opensearch hosts")
-        _verify_opensearch(node_ip, len(inventory.group_ips(text, "opensearch")))
+        _verify_opensearch(node_ip, len(inventory.group_ips(text, "opensearch_master")))
 
 
 if __name__ == "__main__":
