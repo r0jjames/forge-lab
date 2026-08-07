@@ -16,8 +16,10 @@ from .proc import die
 _HOST_RE = re.compile(r"^(\S+)\s+ansible_host=(\S+)")
 _NUM_RE = re.compile(r"(\d+)")
 
-# The ansible group the k8s and dcos roles take their control node from.
-CONTROL_GROUP = CONTROL_ROLE
+# The ansible group the k8s and dcos roles take their control node from. A
+# group is always its role with '-' replaced by '_' (see NodeSpec.group), so
+# derive it the same way rather than assume the role has no dash to replace.
+CONTROL_GROUP = CONTROL_ROLE.replace("-", "_")
 
 
 def _natural_key(name: str):
