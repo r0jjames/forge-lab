@@ -6,13 +6,55 @@ from pathlib import Path
 import pytest
 
 import provision
-from forgelab import inventory, planvars
+from forgelab import inventory
 from forgelab.multipass import Node
 from forgelab.proc import LabError
 
+CONFIG = """
+cluster:
+  type: k8s
+
+cluster_nodes:
+  management:
+    count: 1
+    cpu: 2
+    memory: 4G
+    disk: 20G
+  compute:
+    count: 1
+    cpu: 2
+    memory: 3G
+    disk: 20G
+
+technologies:
+  hdfs:
+    enabled: true
+    nodes:
+      namenode:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+      datanode:
+        count: 2
+        cpu: 2
+        memory: 4G
+        disk: 40G
+  keycloak:
+    enabled: false
+"""
+
+BUILT = {
+    "lab1-management-1": "192.168.252.10",
+    "lab1-compute-1": "192.168.252.11",
+    "lab1-hdfs-namenode-1": "192.168.252.20",
+    "lab1-hdfs-datanode-1": "192.168.252.21",
+    "lab1-hdfs-datanode-2": "192.168.252.22",
+}
+
 
 @pytest.fixture
-def lab(tmp_path, monkeypatch):
+def lab(tmp_path, monkeypatch, configs_dir):
     calls = []
     existing = {"vms": []}
 
@@ -30,29 +72,23 @@ def lab(tmp_path, monkeypatch):
         def apply_retry(self, *args):
             calls.append(("tf-apply", *args))
             # The VMs only exist once terraform has applied — the inventory is
-            # rendered from backend state afterwards. A zeroed count means the
-            # addon is off and terraform built none of that role, so the fake
-            # honours the same overrides the real apply gets.
+            # rendered from backend state afterwards. The fake builds exactly
+            # the nodes map it was handed, which is what the real apply does.
+            varsfile = next(a[len("-var-file="):] for a in args
+                            if a.startswith("-var-file="))
+            payload = json.loads(Path(varsfile).read_text())
             existing["vms"] = [
-                Node("lab1-mgmt-1", ["192.168.252.10"]),
-                Node("lab1-compute-1", ["192.168.252.11"]),
+                Node(name, [BUILT[name]]) for name in payload["nodes"]
             ]
-            if "datanode_count=0" not in args:
-                existing["vms"] += [
-                    Node("lab1-namenode-1", ["192.168.252.20"]),
-                    Node("lab1-datanode-1", ["192.168.252.21"]),
-                    Node("lab1-datanode-2", ["192.168.252.22"]),
-                ]
 
-    tfvars = tmp_path / "lab1.tfvars"
-    tfvars.write_text('cluster_type  = "k8s"\nmgmt_mem      = "4G"\n')
+    (configs_dir / "lab1_cluster.yaml").write_text(CONFIG)
     inv_dir = tmp_path / "inventory"
     registry_dir = tmp_path / "cluster_registered"
 
     monkeypatch.setattr(provision, "multipass", FakeMultipass())
     monkeypatch.setattr(provision, "terraform", FakeTerraform())
     monkeypatch.setattr(provision.proc, "require_tools", lambda *_: None)
-    monkeypatch.setattr(provision.tfvars_mod, "resolve", lambda _: tfvars)
+    monkeypatch.setattr(provision.paths, "TF_DIR", tmp_path / "terraform")
     monkeypatch.setattr(provision.paths, "INV_DIR", inv_dir)
     # Same forgelab.paths module install.py and credentials.py read from too —
     # without this, install.run()'s credentials.write() would land in the
@@ -79,11 +115,15 @@ def lab(tmp_path, monkeypatch):
         {
             "calls": calls,
             "existing": existing,
-            "tfvars": tfvars,
+            "configs": configs_dir,
+            "tf_dir": tmp_path / "terraform",
             "inv_dir": inv_dir,
             "registry_dir": registry_dir,
         },
     )
+
+
+# --- validation gates -----------------------------------------------------
 
 
 def test_requires_a_cluster_name(lab):
@@ -91,37 +131,88 @@ def test_requires_a_cluster_name(lab):
         provision.main([])
 
 
-def test_rejects_an_uppercase_cluster_name(lab):
+@pytest.mark.parametrize("name", ["Lab1", "lab_1"])
+def test_rejects_a_malformed_cluster_name(lab, name):
     with pytest.raises(LabError, match=r"cluster_name must match"):
-        provision.main(["Lab1"])
-
-
-def test_rejects_an_underscore_cluster_name(lab):
-    with pytest.raises(LabError, match=r"cluster_name must match"):
-        provision.main(["lab_1"])
+        provision.main([name])
 
 
 def test_refuses_to_provision_over_existing_vms(lab):
-    lab.existing["vms"] = [Node("lab1-mgmt-1", ["1.2.3.4"])]
+    lab.existing["vms"] = [Node("lab1-management-1", ["1.2.3.4"])]
     with pytest.raises(LabError, match="already exist; deprovision first"):
         provision.main(["lab1"])
 
 
-def test_rejects_an_unknown_type_override(lab):
-    with pytest.raises(LabError, match="got 'swarm' from the TYPE override"):
-        provision.main(["lab1", "swarm"])
+def test_rejects_a_missing_config(lab):
+    with pytest.raises(LabError, match="no config at .*nosuch_cluster.yaml"):
+        provision.main(["nosuch"])
 
 
-def test_rejects_an_unknown_type_from_the_tfvars_file(lab):
-    lab.tfvars.write_text('cluster_type  = "swarm"\n')
-    with pytest.raises(LabError, match=r"got 'swarm' from .*lab1\.tfvars"):
+def test_rejects_an_invalid_config(lab):
+    (lab.configs / "lab1_cluster.yaml").write_text(CONFIG.replace("type: k8s", "type: swarm"))
+    with pytest.raises(LabError, match=r"cluster.type must be one of \[k8s dcos\]"):
         provision.main(["lab1"])
 
 
-def test_empty_type_argument_falls_back_to_the_tfvars_file(lab):
-    """Bamboo always passes ${bamboo.cluster_type}, which may be empty."""
-    provision.main(["lab1", ""])
-    assert ("run", "ansible-playbook") in lab.calls
+def test_validates_before_touching_the_backend(lab, monkeypatch):
+    """A bad plan variable must not cost a multipass round trip.
+
+    The Validate stage catches this earlier still, but `make provision` has no
+    stages — this ordering is what makes the CLI fail as fast as the plan.
+    """
+
+    def explode(*_args, **_kwargs):
+        raise AssertionError("multipass was queried before validation finished")
+
+    monkeypatch.setattr(provision.multipass, "list_vms", explode)
+    with pytest.raises(LabError, match="no config at"):
+        provision.main(["lab1", "nosuch"])
+
+
+def test_the_config_variable_selects_a_different_file(lab):
+    (lab.configs / "big_cluster.yaml").write_text(CONFIG)
+    provision.main(["lab1", "big"])
+    assert (lab.tf_dir / ".generated" / "lab1.tfvars.json").is_file()
+
+
+# --- the generated tfvars -------------------------------------------------
+
+
+def test_writes_the_nodes_map_terraform_applies(lab):
+    provision.main(["lab1"])
+    payload = json.loads(
+        (lab.tf_dir / ".generated" / "lab1.tfvars.json").read_text()
+    )
+    assert payload["cluster_name"] == "lab1"
+    assert sorted(payload["nodes"]) == sorted(BUILT)
+    assert payload["nodes"]["lab1-hdfs-datanode-1"] == {
+        "cpus": 2, "memory": "4G", "disk": "40G",
+    }
+
+
+def test_applies_with_the_generated_var_file(lab):
+    provision.main(["lab1"])
+    apply = next(c for c in lab.calls if c[0] == "tf-apply")
+    assert f"-var-file={lab.tf_dir / '.generated' / 'lab1.tfvars.json'}" in apply
+
+
+def test_the_generated_var_file_survives_the_run(lab):
+    """deprovision reads it, so teardown never needs the config file."""
+    provision.main(["lab1"])
+    assert (lab.tf_dir / ".generated" / "lab1.tfvars.json").is_file()
+
+
+def test_a_disabled_technology_builds_no_vms(lab):
+    text = CONFIG.replace("  hdfs:\n    enabled: true", "  hdfs:\n    enabled: false")
+    (lab.configs / "lab1_cluster.yaml").write_text(text)
+    provision.main(["lab1"])
+    payload = json.loads(
+        (lab.tf_dir / ".generated" / "lab1.tfvars.json").read_text()
+    )
+    assert sorted(payload["nodes"]) == ["lab1-compute-1", "lab1-management-1"]
+
+
+# --- stage order ----------------------------------------------------------
 
 
 def test_runs_the_stages_in_order(lab):
@@ -140,8 +231,37 @@ def test_registers_the_cluster_only_after_verify(lab):
     provision.main(["lab1"])
     kinds = [c[0] for c in lab.calls]
     # two runs: ansible-playbook, then verify.py — registration comes after both
-    assert kinds.index("registry") > len(kinds) - 2
     assert kinds[-1] == "registry"
+
+
+def test_leaves_no_cluster_info_when_verify_fails(lab, monkeypatch):
+    def fail_on_verify(*args, **kwargs):
+        if str(args[0]) != "ansible-playbook":
+            raise LabError("nodes not all Ready within timeout")
+
+    monkeypatch.setattr(provision.proc, "run", fail_on_verify)
+    with pytest.raises(LabError):
+        provision.main(["lab1"])
+    assert not (lab.registry_dir / "lab1_cluster_info.yml").exists()
+
+
+# --- inventory and registry -----------------------------------------------
+
+
+def test_technology_vms_land_in_their_prefixed_groups(lab):
+    provision.main(["lab1"])
+    text = (lab.inv_dir / "lab1.ini").read_text()
+    assert inventory.group_ips(text, "hdfs_namenode") == ["192.168.252.20"]
+    assert inventory.group_ips(text, "hdfs_datanode") == [
+        "192.168.252.21", "192.168.252.22",
+    ]
+
+
+def test_the_inventory_carries_the_derived_children(lab):
+    provision.main(["lab1"])
+    text = (lab.inv_dir / "lab1.ini").read_text()
+    assert "[k8s_nodes:children]\nmanagement\ncompute\n" in text
+    assert "[hdfs_nodes:children]\nhdfs_namenode\nhdfs_datanode\n" in text
 
 
 def test_writes_the_cluster_info_file(lab):
@@ -152,51 +272,27 @@ def test_writes_the_cluster_info_file(lab):
     assert "mem: 4G" in info
 
 
-def test_hdfs_vms_land_in_their_own_inventory_groups(lab):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
-    provision.main(["lab1"])
-    text = (lab.inv_dir / "lab1.ini").read_text()
-    assert inventory.group_ips(text, "namenode") == ["192.168.252.20"]
-    assert inventory.group_ips(text, "datanode") == [
-        "192.168.252.21",
-        "192.168.252.22",
-    ]
-
-
 def test_the_cluster_info_tells_the_namenode_from_the_datanodes(lab):
-    lab.tfvars.write_text(
-        'cluster_type = "k8s"\naddons = "hdfs"\n'
-        'namenode_disk = "20G"\ndatanode_disk = "40G"\n'
-    )
     provision.main(["lab1"])
     info = (lab.registry_dir / "lab1_cluster_info.yml").read_text()
-    assert "- name: lab1-namenode-1\n    role: namenode\n" in info
-    assert "- name: lab1-datanode-1\n    role: datanode\n" in info
+    assert "- name: lab1-hdfs-namenode-1\n    role: hdfs-namenode\n" in info
+    assert "- name: lab1-hdfs-datanode-1\n    role: hdfs-datanode\n" in info
     assert "disk: 20G" in info
     assert "disk: 40G" in info
 
 
-def test_leaves_no_cluster_info_when_verify_fails(lab, monkeypatch):
-    def fail_on_verify(*args, **kwargs):
-        calls = [str(a) for a in args]
-        if calls[0] != "ansible-playbook":
-            raise provision.proc.LabError("nodes not all Ready within timeout")
-
-    monkeypatch.setattr(provision.proc, "run", fail_on_verify)
-    with pytest.raises(provision.proc.LabError):
-        provision.main(["lab1"])
-    assert not (lab.registry_dir / "lab1_cluster_info.yml").exists()
+# --- what ansible is told -------------------------------------------------
 
 
 def _capture_extra_vars(monkeypatch):
-    """Patch install's ansible-playbook call and return the payload the
-    caller's fake `run` records — read from the @varsfile JSON while the file
-    still exists, since install.run() deletes it in a `finally` block.
+    """Patch install's ansible-playbook call and return the payload it wrote —
+    read from the @varsfile JSON while the file still exists, since
+    install.run() deletes it in a `finally` block.
 
-    provision.install.proc and provision.proc are the same forgelab.proc
-    module object, so this fake also receives Stage 4's verify.py call; it
-    only has a "@varsfile" arg on the ansible-playbook call, so anything else
-    is left alone (a no-op stand-in, same as the rest of the suite's fakes).
+    provision.install.proc and provision.proc are the same forgelab.proc module
+    object, so this fake also receives the verify.py call; only the
+    ansible-playbook call has an "@varsfile" argument, so anything else is left
+    alone (a no-op stand-in, same as the rest of the suite's fakes).
     """
     seen = {}
 
@@ -215,89 +311,23 @@ def test_tells_ansible_where_to_report_components(lab, monkeypatch):
     assert "component_report" in seen["payload"]
 
 
-def test_passes_the_resolved_cluster_type_to_ansible(lab, monkeypatch):
+def test_passes_the_configs_cluster_type_to_ansible(lab, monkeypatch):
+    (lab.configs / "lab1_cluster.yaml").write_text(CONFIG.replace("type: k8s", "type: dcos"))
     seen = _capture_extra_vars(monkeypatch)
-    provision.main(["lab1", "dcos"])
+    provision.main(["lab1"])
     assert seen["payload"]["cluster_type"] == "dcos"
 
 
-def test_validates_before_touching_the_backend(lab, monkeypatch):
-    """A bad plan variable must not cost a multipass round trip.
-
-    The Validate stage catches this earlier still, but `make provision` has no
-    stages — this ordering is what makes the CLI fail as fast as the plan.
-    """
-
-    def explode(*_args, **_kwargs):
-        raise AssertionError("multipass was queried before validation finished")
-
-    monkeypatch.setattr(provision.multipass, "list_vms", explode)
-    with pytest.raises(LabError, match=r"unknown addon\(s\) \[kafka\]"):
-        provision.main(["lab1", "", "kafka"])
-
-
-def test_placeholder_addons_fall_back_to_the_tfvars_file(lab, monkeypatch):
-    """The shipped default is a menu, not a request for those three addons."""
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
+def test_passes_the_enabled_technologies_as_addons(lab, monkeypatch):
+    """site.yml still gates its roles on the `addons` comma string."""
     seen = _capture_extra_vars(monkeypatch)
-    provision.main(["lab1", planvars.PLACEHOLDER_TYPE, planvars.PLACEHOLDER_ADDONS])
+    provision.main(["lab1"])
     assert seen["payload"]["addons"] == "hdfs"
-    assert seen["payload"]["cluster_type"] == "k8s"
 
 
-def test_none_disables_every_addon(lab, monkeypatch):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,keycloak"\n')
+def test_a_config_with_nothing_enabled_passes_an_empty_addons(lab, monkeypatch):
+    text = CONFIG.replace("  hdfs:\n    enabled: true", "  hdfs:\n    enabled: false")
+    (lab.configs / "lab1_cluster.yaml").write_text(text)
     seen = _capture_extra_vars(monkeypatch)
-    provision.main(["lab1", "", "none"])
+    provision.main(["lab1"])
     assert seen["payload"]["addons"] == ""
-
-
-def test_passes_the_resolved_addons_to_ansible(lab, monkeypatch):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
-    seen = _capture_extra_vars(monkeypatch)
-    provision.main(["lab1"])
-    assert seen["payload"]["addons"] == "hdfs"
-
-
-def test_addons_argument_overrides_the_tfvars_file(lab, monkeypatch):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs"\n')
-    seen = _capture_extra_vars(monkeypatch)
-    provision.main(["lab1", "", "keycloak"])
-    assert seen["payload"]["addons"] == "keycloak"
-
-
-def test_node_count_overrides_zeroes_every_role_when_no_addons():
-    assert provision.node_count_overrides([]) == [
-        "-var", "datanode_count=0", "-var", "opensearch_count=0",
-    ]
-
-
-def test_node_count_overrides_leaves_an_enabled_role_alone():
-    assert provision.node_count_overrides(["hdfs"]) == ["-var", "opensearch_count=0"]
-
-
-def test_node_count_overrides_is_empty_when_every_role_is_wanted():
-    assert provision.node_count_overrides(["hdfs", "opensearch", "keycloak"]) == []
-
-
-def test_keycloak_alone_builds_no_extra_vms():
-    """Keycloak runs on the k8s cluster; it needs no VM role of its own."""
-    assert provision.node_count_overrides(["keycloak"]) == [
-        "-var", "datanode_count=0", "-var", "opensearch_count=0",
-    ]
-
-
-def test_apply_zeroes_the_vm_roles_of_disabled_addons(lab):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = ""\n')
-    provision.main(["lab1"])
-    apply = next(c for c in lab.calls if c[0] == "tf-apply")
-    assert "datanode_count=0" in apply
-    assert "opensearch_count=0" in apply
-
-
-def test_apply_keeps_the_vm_roles_of_enabled_addons(lab):
-    lab.tfvars.write_text('cluster_type = "k8s"\naddons = "hdfs,opensearch"\n')
-    provision.main(["lab1"])
-    apply = next(c for c in lab.calls if c[0] == "tf-apply")
-    assert "datanode_count=0" not in apply
-    assert "opensearch_count=0" not in apply
