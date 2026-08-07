@@ -344,6 +344,38 @@ def test_rejects_an_unknown_top_level_section():
         config(CONFIG + "extras:\n  a: 1\n")
 
 
+def test_rejects_a_cluster_role_that_prefixes_another():
+    """VM names are <cluster>-<role>-<n>, so `master-eligible` VMs would also
+    match the `master-` prefix and land in two ansible groups."""
+    text = CONFIG.replace("  compute:", "  management-spare:")
+    with pytest.raises(
+        LabError,
+        match=r"role 'management-spare' starts with role 'management'",
+    ):
+        config(text)
+
+
+def test_rejects_a_cluster_role_that_prefixes_a_technology_role():
+    """A cluster_nodes role named `hdfs` would swallow every hdfs-* VM."""
+    text = CONFIG.replace("  compute:", "  hdfs:")
+    with pytest.raises(LabError, match=r"role 'hdfs-namenode' starts with role 'hdfs'"):
+        config(text)
+
+
+def test_allows_roles_that_merely_share_a_prefix_string():
+    """`hdfs-namenode` and `hdfs-datanode` share `hdfs-` but neither is a
+    prefix of the other, so their VM names cannot collide."""
+    assert "hdfs-datanode" in [spec.role for spec in config().roles()]
+
+
+def test_a_disabled_technology_cannot_cause_a_collision():
+    """Only roles that will actually be built are checked."""
+    text = CONFIG.replace("  opensearch:\n    enabled: false", "  opensearch:\n    enabled: false").replace(
+        "  compute:", "  opensearch:"
+    )
+    assert "opensearch" in [spec.role for spec in config(text).roles()]
+
+
 # --- load() ---------------------------------------------------------------
 
 
