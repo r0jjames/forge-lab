@@ -97,19 +97,22 @@ because a search head *cluster* needs three members and a deployer this lab
 does not build; and two indexers minimum, because the manager runs
 `replication_factor = 2` and a peer cannot replicate to itself.
 
-The shipped `cluster_configs/splunk1_cluster.yaml` is the Splunk variant: it
-parks `opensearch` (the two fill the same slot) and adds 1 cluster-manager +
-2 indexers + 1 search head, for 1 management + 2 compute + 1 hdfs-namenode +
-3 hdfs-datanode + 4 splunk = **11 VMs** and 48G of RAM.
+`keycloak` additionally requires `cluster.type: k8s`. Its role applies
+manifests with `kubectl --kubeconfig /etc/kubernetes/admin.conf`, which only a
+kubeadm control plane has, so a dcos cluster is rejected up front rather than
+halfway through the install.
 
 The shipped `cluster_configs/lab1_cluster.yaml` declares 1 management + 2
-compute + 1 hdfs-namenode + 3 hdfs-datanode + 3 opensearch-master = **10
-VMs**, reserving 44G of RAM (4 + 2×3 + 4 + 3×4 + 3×6). Check the host has it
-before starting. See "Checking a cluster's size before building it" below
+compute + 1 hdfs-namenode + 3 hdfs-datanode + 1 splunk-cluster-manager + 2
+splunk-indexer + 1 splunk-search-head = **11 VMs**, reserving 48G of RAM
+(4 + 2×3 + 4 + 3×4 + 4 + 2×6 + 6). Check the host has it before starting.
+`opensearch1_cluster.yaml` is the OpenSearch variant at 10 VMs and 44G; see
+[`../cluster_configs/README.md`](../cluster_configs/README.md) for the full
+set. See "Checking a cluster's size before building it" below
 for the exact roll-up, straight from `validate_prov.py`.
 
-Note that `kubectl get nodes` on that 10-VM cluster shows **3** nodes. Only
-the management and compute nodes join Kubernetes; the HDFS and OpenSearch VMs
+Note that `kubectl get nodes` on that 11-VM cluster shows **3** nodes. Only
+the management and compute nodes join Kubernetes; the HDFS and Splunk VMs
 are plain hosts running systemd services. That is correct, not a partial
 install.
 
@@ -122,17 +125,19 @@ roll-up and the totals:
 $ bamboo-specs/src/main/java/lab/provisioncluster/scripts/validate_prov.py lab1
 ==> cluster_name   lab1
 ==> cluster_type   k8s
-==> technologies   hdfs,opensearch,keycloak
+==> technologies   hdfs,keycloak,splunk
 ==> config         lab1_cluster.yaml
 
-ROLE                N CPU MEM   DISK 
-management          1   2 4G    20G  
-compute             2   2 3G    20G  
-hdfs-namenode       1   2 4G    20G  
-hdfs-datanode       3   2 4G    40G  
-opensearch-master   3   2 6G    40G  
+ROLE                     N CPU MEM   DISK 
+management               1   2 4G    20G  
+compute                  2   2 3G    20G  
+hdfs-namenode            1   2 4G    20G  
+hdfs-datanode            3   2 4G    40G  
+splunk-cluster-manager   1   2 4G    20G  
+splunk-indexer           2   4 6G    60G  
+splunk-search-head       1   4 6G    30G  
 
-==> total          10 VMs, 20 vCPU, 44G RAM
+==> total          11 VMs, 28 vCPU, 48G RAM
 ```
 
 It runs on any agent and needs nothing but Python and the checkout, so a
@@ -149,9 +154,11 @@ A clean run ends with:
 
 ```
 ==> verify: waiting for all nodes Ready (timeout 300s)
-==> verify: keycloak realm at http://192.168.252.98:30080/realms/forgelab
-==> verify: 3 live datanodes on 192.168.252.100
-==> verify: 3-node opensearch cluster at http://192.168.252.103:9200
+==> verify: keycloak realm at http://192.168.252.127:30080/realms/forgelab
+==> verify: 3 live datanodes on 192.168.252.124
+==> verify: splunk search head at http://192.168.252.122:8000
+==> verify: 2 indexer peers up on 192.168.252.123
+splunk indexed 4666 events into lab_os
 ==> inventory: .../ansible/inventory/lab1.ini
 ==> ssh config: /Users/roj/.forgelab/ssh_config.d/lab1.conf (try: ssh lab1-management-1)
 ==> credentials: /Users/roj/.forgelab/lab1-credentials.yml

@@ -353,6 +353,16 @@ def from_text(text: str, source: str) -> ClusterConfig:
                 _at(source, f"role {other!r} starts with role {role!r}, so their "
                             f"VM names collide — rename one")
 
+    # The keycloak role applies manifests with
+    # `kubectl --kubeconfig /etc/kubernetes/admin.conf`, which exists only on a
+    # kubeadm control plane. On a dcos cluster the play would run and fail
+    # halfway through an install, so refuse the combination up front — the same
+    # reason every other rule here exists.
+    if "keycloak" in enabled and cluster_type != "k8s":
+        _at(source, f"keycloak runs as pods on the cluster's Kubernetes control "
+                    f"plane, so it requires cluster.type: k8s "
+                    f"(got {cluster_type!r})")
+
     if "hdfs" in enabled:
         namenodes = [s for s in tech_roles["hdfs"] if s.role == "hdfs-namenode"]
         if len(namenodes) != 1 or namenodes[0].count != 1:

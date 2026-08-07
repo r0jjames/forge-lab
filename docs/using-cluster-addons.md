@@ -19,7 +19,11 @@ Which of these a cluster gets is controlled by the `technologies` block in
 its config, `cluster_configs/<cluster>_cluster.yaml`. There is no fallback
 file — a cluster with no config of its own fails provisioning naming the
 path it looked for, rather than silently building something smaller.
-`lab1_cluster.yaml` currently has all three enabled:
+`lab1_cluster.yaml` runs hdfs, keycloak and splunk, with opensearch parked
+(it and Splunk fill the same slot). The OpenSearch shape lives in
+`opensearch1_cluster.yaml` — see
+[`../cluster_configs/README.md`](../cluster_configs/README.md) for every
+config and every technology rule:
 
 ```yaml
 technologies:
@@ -40,7 +44,7 @@ technologies:
         disk: 40G
 
   opensearch:
-    enabled: true
+    enabled: false        # sizing kept, unvalidated, and builds nothing
     nodes:
       master:
         count: 3
@@ -49,7 +53,28 @@ technologies:
         disk: 40G
 
   keycloak:
+    enabled: true         # requires cluster.type: k8s
+
+  splunk:
     enabled: true
+    nodes:
+      cluster-manager:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+
+      indexer:
+        count: 2
+        cpu: 4
+        memory: 6G
+        disk: 60G
+
+      search-head:
+        count: 1
+        cpu: 4
+        memory: 6G
+        disk: 30G
 ```
 
 To turn one off, set its `enabled` to `false` in the file — its sizing stays

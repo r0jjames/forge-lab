@@ -555,3 +555,21 @@ def test_every_committed_config_is_valid():
 
     for path in sorted(paths.CLUSTER_CONFIGS_DIR.glob("*_cluster.yaml")):
         clusterconfig.from_text(path.read_text(), str(path))
+
+
+def test_keycloak_requires_a_kubernetes_cluster():
+    """The keycloak role applies manifests with kubectl against
+    /etc/kubernetes/admin.conf, which only a kubeadm control plane has — so a
+    dcos cluster must fail here, not an hour into the install."""
+    text = CONFIG.replace("  type: k8s", "  type: dcos")
+    with pytest.raises(LabError, match="keycloak .* requires cluster.type: k8s"):
+        config(text)
+
+
+def test_a_dcos_cluster_without_keycloak_is_fine():
+    """hdfs and opensearch are plain systemd services and do not care which
+    cluster type they sit beside."""
+    text = CONFIG.replace("  type: k8s", "  type: dcos").replace(
+        "  keycloak:\n    enabled: true", "  keycloak:\n    enabled: false"
+    )
+    assert config(text).cluster_type == "dcos"

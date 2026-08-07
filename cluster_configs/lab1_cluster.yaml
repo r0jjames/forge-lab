@@ -1,7 +1,15 @@
 # The lab's default cluster. Provision it with:
 #   make provision CLUSTER=lab1
+#
+# Splunk is the search-and-logging technology here; OpenSearch is parked
+# because the two fill the same slot and running both costs 40G. The OpenSearch
+# shape lives in opensearch1_cluster.yaml rather than behind a flag in this
+# file. See cluster_configs/README.md for the full technology reference.
+#
 # A technology with `enabled: false` keeps its sizing here, unvalidated, so it
 # can be switched back on without retyping it.
+#
+# 11 VMs, 28 vCPU, 48G RAM.
 
 cluster:
   type: k8s
@@ -37,7 +45,7 @@ technologies:
         disk: 40G
 
   opensearch:
-    enabled: true
+    enabled: false
     nodes:
       master:
         count: 3
@@ -47,3 +55,29 @@ technologies:
 
   keycloak:
     enabled: true
+
+  splunk:
+    enabled: true
+    nodes:
+      # One manager per cluster, and it doubles as the licence manager.
+      cluster-manager:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+
+      # Two is the floor: the manager runs replication_factor = 2.
+      # Sized for emulation — there is no arm64 Splunk Enterprise build.
+      indexer:
+        count: 2
+        cpu: 4
+        memory: 6G
+        disk: 60G
+
+      # One search head, not a search head cluster — that needs three members
+      # and a deployer, which this lab does not build.
+      search-head:
+        count: 1
+        cpu: 4
+        memory: 6G
+        disk: 30G

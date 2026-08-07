@@ -1,5 +1,10 @@
-# The Splunk lab cluster. Provision it with:
-#   make provision CLUSTER=splunk1
+# The cluster this technology was built and verified against.
+#
+# Same shape as lab1_cluster.yaml, which is now the default Splunk config —
+# this file exists because a cluster named splunk1 is built from it, and
+# deleting it would leave `make addons CLUSTER=splunk1` with nothing to read.
+# Delete it once that cluster is deprovisioned and use lab1 instead.
+#
 # A technology with `enabled: false` keeps its sizing here, unvalidated, so it
 # can be switched back on without retyping it.
 #

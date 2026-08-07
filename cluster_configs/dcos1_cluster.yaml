@@ -1,0 +1,56 @@
+# The DC/OS shape. Provision it with:
+#   make provision CLUSTER=dcos1
+#
+# KNOWN BLOCKER: DC/OS does not install on Apple Silicon. Its genconf step runs
+# an amd64-only Docker image and fails deterministically with
+# `exec /installer_internal_wrapper: exec format error`. This config is here so
+# the dcos path stays expressible and validated; it builds on an amd64 host.
+#
+# No keycloak: that role applies manifests with kubectl against
+# /etc/kubernetes/admin.conf, which only a kubeadm control plane has, so
+# clusterconfig rejects keycloak on a dcos cluster rather than letting the
+# install discover it. HDFS and OpenSearch are plain systemd services and do
+# not care which cluster type they sit beside.
+#
+# 8 VMs, 16 vCPU, 34G RAM.
+
+cluster:
+  type: dcos
+
+cluster_nodes:
+  management:
+    count: 1
+    cpu: 2
+    memory: 4G
+    disk: 20G
+
+  compute:
+    count: 2
+    cpu: 2
+    memory: 3G
+    disk: 20G
+
+technologies:
+  hdfs:
+    enabled: true
+    nodes:
+      namenode:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+
+      datanode:
+        count: 2
+        cpu: 2
+        memory: 4G
+        disk: 40G
+
+  opensearch:
+    enabled: true
+    nodes:
+      master:
+        count: 2
+        cpu: 2
+        memory: 6G
+        disk: 40G
