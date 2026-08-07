@@ -752,6 +752,20 @@ def from_text(text: str, source: str) -> ClusterConfig:
             for node, spec in node_blocks.items()
         ]
 
+    # VM names are <cluster>-<role>-<n> and provision.py finds a role's VMs by
+    # that name prefix, so one role name being a prefix of another makes their
+    # VM sets overlap and puts the same host in two ansible groups. Reject the
+    # config rather than the ambiguity: a cluster_nodes role named `hdfs` would
+    # otherwise swallow every hdfs-namenode and hdfs-datanode VM.
+    built = [spec.role for spec in cluster_roles]
+    for name in enabled:
+        built += [spec.role for spec in tech_roles.get(name, [])]
+    for role in built:
+        for other in built:
+            if other != role and other.startswith(f"{role}-"):
+                _at(source, "", f"role {other!r} starts with role {role!r}, so their "
+                                f"VM names collide — rename one")
+
     if "hdfs" in enabled:
         namenodes = [s for s in tech_roles["hdfs"] if s.role == "hdfs-namenode"]
         if len(namenodes) != 1 or namenodes[0].count != 1:
