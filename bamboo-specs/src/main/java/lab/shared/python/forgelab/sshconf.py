@@ -6,6 +6,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from . import paths
+from .clusterconfig import CONTROL_ROLE
 
 INCLUDE_LINE = "Include ~/.forgelab/ssh_config.d/*.conf"
 _INCLUDE_MARKER = "forgelab/ssh_config.d"
@@ -14,8 +15,9 @@ _INCLUDE_MARKER = "forgelab/ssh_config.d"
 def render(cluster: str, hosts, key=None) -> str:
     """Build the cluster's ssh config from [(name, ip)] pairs.
 
-    Host entries are keyed on both the node name and its IP, so `ssh lab1-mgmt-1`
-    and `ssh 192.168.252.34` both land as ubuntu with the lab key.
+    Host entries are keyed on both the node name and its IP, so
+    `ssh lab1-management-1` and `ssh 192.168.252.34` both land as ubuntu with
+    the lab key.
 
     Host key checking is off on purpose: these VMs are disposable and multipass
     recycles IPs between clusters, so a pinned key is guaranteed to go stale and
@@ -80,7 +82,7 @@ def write(cluster: str, hosts) -> Path:
     if backup:
         ssh_config = Path.home() / ".ssh" / "config"
         print(f"==> added forge-lab Include to {ssh_config} (backup: {backup})")
-    print(f"==> ssh config: {conf} (try: ssh {cluster}-mgmt-1)")
+    print(f"==> ssh config: {conf} (try: ssh {cluster}-{CONTROL_ROLE}-1)")
     return conf
 
 

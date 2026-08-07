@@ -1,0 +1,49 @@
+# The lab's default cluster. Provision it with:
+#   make provision CLUSTER=lab1
+# A technology with `enabled: false` keeps its sizing here, unvalidated, so it
+# can be switched back on without retyping it.
+
+cluster:
+  type: k8s
+
+cluster_nodes:
+  management:
+    count: 1
+    cpu: 2
+    memory: 4G
+    disk: 20G
+
+  compute:
+    count: 2
+    cpu: 2
+    memory: 3G
+    disk: 20G
+
+technologies:
+  hdfs:
+    enabled: true
+    nodes:
+      # Non-HA HDFS has exactly one NameNode, and it stores metadata only.
+      namenode:
+        count: 1
+        cpu: 2
+        memory: 4G
+        disk: 20G
+
+      datanode:
+        count: 3
+        cpu: 2
+        memory: 4G
+        disk: 40G
+
+  opensearch:
+    enabled: true
+    nodes:
+      master:
+        count: 3
+        cpu: 2
+        memory: 6G
+        disk: 40G
+
+  keycloak:
+    enabled: true

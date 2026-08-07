@@ -119,14 +119,14 @@ hooks-install: ## Point git at infra/githooks (pushes to main republish the plan
 	@echo "core.hooksPath=infra/githooks — a push to main now publishes the specs"
 
 .PHONY: provision
-provision: ## Provision cluster: make provision CLUSTER=lab1 [TYPE=k8s|dcos] [ADDONS=hdfs,keycloak,opensearch|none]
+provision: ## Provision cluster: make provision CLUSTER=lab1 [CONFIG=lab1]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	$(LAB)/provisioncluster/scripts/provision.py $(CLUSTER) "$(TYPE)" "$(ADDONS)"
+	$(LAB)/provisioncluster/scripts/provision.py $(CLUSTER) "$(CONFIG)"
 
 .PHONY: addons
-addons: ## Re-run the install stage only: make addons CLUSTER=lab1 [TYPE=] [ADDONS=hdfs|none]
+addons: ## Re-run the install stage only: make addons CLUSTER=lab1 [CONFIG=lab1]
 	@[ -n "$(CLUSTER)" ] || (echo "CLUSTER required"; exit 1)
-	$(LAB)/provisioncluster/scripts/install.py $(CLUSTER) "$(TYPE)" "$(ADDONS)"
+	$(LAB)/provisioncluster/scripts/install.py $(CLUSTER) "$(CONFIG)"
 
 .PHONY: deprovision
 deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
@@ -137,7 +137,6 @@ deprovision: ## Tear down cluster: make deprovision CLUSTER=lab1
 lint: ## All static checks
 	pytest bamboo-specs/src/test/python
 	terraform -chdir=$(LAB)/shared/terraform fmt -check -recursive
-	terraform -chdir=$(LAB)/shared/clusters fmt -check -recursive
 	terraform -chdir=$(LAB)/shared/terraform init -backend=false -input=false >/dev/null
 	terraform -chdir=$(LAB)/shared/terraform validate
 	cd $(LAB)/shared/ansible && ansible-lint

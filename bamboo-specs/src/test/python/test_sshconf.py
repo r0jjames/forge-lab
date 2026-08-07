@@ -2,19 +2,19 @@ from pathlib import Path
 
 from forgelab import sshconf
 
-HOSTS = [("lab1-mgmt-1", "192.168.252.10"), ("lab1-compute-1", "192.168.252.11")]
+HOSTS = [("lab1-management-1", "192.168.252.10"), ("lab1-compute-1", "192.168.252.11")]
 
 
 def test_render_keys_each_host_on_both_name_and_ip():
     text = sshconf.render("lab1", HOSTS, key=Path("/k"))
-    assert "Host lab1-mgmt-1 192.168.252.10\n" in text
+    assert "Host lab1-management-1 192.168.252.10\n" in text
     assert "Host lab1-compute-1 192.168.252.11\n" in text
 
 
 def test_render_emits_the_full_option_block():
     text = sshconf.render("lab1", [HOSTS[0]], key=Path("/k"))
     assert text.endswith(
-        "Host lab1-mgmt-1 192.168.252.10\n"
+        "Host lab1-management-1 192.168.252.10\n"
         "  HostName 192.168.252.10\n"
         "  User ubuntu\n"
         "  IdentityFile /k\n"
