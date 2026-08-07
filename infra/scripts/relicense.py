@@ -3,6 +3,12 @@
 to the clipboard, and open the Bamboo license-admin page so you can paste + save.
 
 For the FIRST-TIME setup wizard (no admin page yet) use `make license` instead.
+
+Atlassian rotates the published key rarely, so most of the time the key you
+fetch is the one already in bamboo.cfg.xml — Bamboo rejects re-entering an
+identical string with "The license key you entered was invalid." The timebomb
+re-arms on server start instead, so `make bamboo-restart` is the usual fix;
+this page only helps once the published key actually changes.
 """
 
 import os
@@ -15,8 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from get_license import LicenseError, fetch_license_key  # noqa: E402
 
+# Bamboo 12 dropped the "!doDefault" alias — that URL now 404s on the Struts
+# unknown-handler; the plain action is the license admin page.
 LICENSE_ADMIN = os.environ.get(
-    "LICENSE_ADMIN", "http://localhost:8085/admin/updateLicense!doDefault.action"
+    "LICENSE_ADMIN", "http://localhost:8085/admin/updateLicense.action"
 )
 
 

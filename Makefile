@@ -101,6 +101,12 @@ license: ## Fetch + copy the 24h Bamboo timebomb key (for the setup wizard)
 relicense: ## Fetch + copy the 24h key and open Bamboo license admin (after expiry)
 	infra/scripts/relicense.py
 
+.PHONY: bamboo-restart
+bamboo-restart: ## Re-arm the 24h timebomb: restart bamboo-0 (PVCs + DB untouched)
+	kubectl -n ci delete pod bamboo-0 --wait=false
+	kubectl -n ci rollout status statefulset/bamboo --timeout=600s
+	@echo "Bamboo restarted — timebomb licence re-armed for 24h. Re-run 'make ui'."
+
 .PHONY: agent-install
 agent-install: ## Install host-local Bamboo agent (needs AGENT_TOKEN)
 	infra/agent/install_agent.py

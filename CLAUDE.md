@@ -23,8 +23,14 @@ docs/provision-usage.md.
   (24h timebomb, runtime-only, never committed), sysadmin `admin/admin`, and the
   40-hex agent security token (created once, shared server<->agent)
 - `make ui` — port-forward Bamboo to http://localhost:8085
+- `make bamboo-restart` — the fix for "license has expired ... read-only mode".
+  The timebomb re-arms on server start, so a pod restart buys another 24h;
+  PVCs and DB are untouched. `make relicense` does NOT help here: Atlassian
+  rarely rotates the published key, and re-entering the string already in
+  `bamboo.cfg.xml` fails with "The license key you entered was invalid."
 - `make license` / `make relicense` — fetch the 24h timebomb key to clipboard
-  (only needed for manual wizard / post-expiry; `bootstrap` handles it via secret)
+  (only needed for manual wizard / a genuinely rotated key; `bootstrap` handles
+  it via secret)
 - `make agent-install` / `make agent-run` — host-local Bamboo agent. Token is
   auto-read from the `bamboo-agent-token` secret; approve the agent once in
   Administration > Agents. Unattended setup already started the broker (54663).
