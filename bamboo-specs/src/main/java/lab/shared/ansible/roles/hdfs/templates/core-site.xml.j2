@@ -2,7 +2,7 @@
 <configuration>
   <property>
     <name>fs.defaultFS</name>
-    <value>hdfs://{{ hostvars[groups['namenode'][0]].ansible_host }}:{{ hdfs_namenode_port }}</value>
+    <value>hdfs://{{ hostvars[groups['hdfs_namenode'][0]].ansible_host }}:{{ hdfs_namenode_port }}</value>
   </property>
   <property>
     <name>hadoop.tmp.dir</name>

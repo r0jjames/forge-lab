@@ -2,16 +2,16 @@
 - name: Install and start OpenSearch on every opensearch node
   ansible.builtin.import_tasks: install.yml
 
-# groups['opensearch'][0] is also where Dashboards lives, per the addon's
+# groups['opensearch_master'][0] is also where Dashboards lives, per the addon's
 # topology: one node in the three-node cluster doubles as the UI host.
 - name: Install and start OpenSearch Dashboards on the first node
   ansible.builtin.import_tasks: dashboards.yml
-  when: inventory_hostname == groups['opensearch'][0]
+  when: inventory_hostname == groups['opensearch_master'][0]
 
 - name: Report installed components  # noqa: var-naming[no-role-prefix]
   ansible.builtin.set_fact:
     forgelab_components: >-
       {{ forgelab_components | default([]) + [{'name': 'opensearch',
       'version': opensearch_version,
-      'url': 'http://' ~ hostvars[groups['opensearch'][0]].ansible_host ~ ':' ~ opensearch_http_port,
-      'ui': 'http://' ~ hostvars[groups['opensearch'][0]].ansible_host ~ ':' ~ opensearch_dashboards_port}] }}
+      'url': 'http://' ~ hostvars[groups['opensearch_master'][0]].ansible_host ~ ':' ~ opensearch_http_port,
+      'ui': 'http://' ~ hostvars[groups['opensearch_master'][0]].ansible_host ~ ':' ~ opensearch_dashboards_port}] }}

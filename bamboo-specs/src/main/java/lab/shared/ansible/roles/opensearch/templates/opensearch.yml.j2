@@ -8,11 +8,11 @@ path.data: {{ opensearch_data_dir }}/data
 path.logs: {{ opensearch_data_dir }}/logs
 
 discovery.seed_hosts:
-{% for host in groups['opensearch'] %}
+{% for host in groups['opensearch_master'] %}
   - {{ hostvars[host].ansible_host }}
 {% endfor %}
 cluster.initial_cluster_manager_nodes:
-{% for host in groups['opensearch'] %}
+{% for host in groups['opensearch_master'] %}
   - {{ host }}
 {% endfor %}
 

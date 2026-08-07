@@ -4,7 +4,7 @@
 
 - name: Bring up the NameNode
   ansible.builtin.import_tasks: namenode.yml
-  when: inventory_hostname in groups['namenode']
+  when: inventory_hostname in groups['hdfs_namenode']
 
 # Only the datanode VMs run a DataNode: the NameNode host stores metadata and
 # no blocks, and install.yml never templates hdfs-datanode.service onto it.
@@ -16,12 +16,12 @@
     state: started
     enabled: true
     daemon_reload: true
-  when: inventory_hostname in groups['datanode']
+  when: inventory_hostname in groups['hdfs_datanode']
 
 - name: Report installed components  # noqa: var-naming[no-role-prefix]
   ansible.builtin.set_fact:
     forgelab_components: >-
       {{ forgelab_components | default([]) + [{'name': 'hdfs',
       'version': hdfs_version,
-      'namenode': 'hdfs://' ~ hostvars[groups['namenode'][0]].ansible_host ~ ':' ~ hdfs_namenode_port,
-      'ui': 'http://' ~ hostvars[groups['namenode'][0]].ansible_host ~ ':' ~ hdfs_ui_port}] }}
+      'namenode': 'hdfs://' ~ hostvars[groups['hdfs_namenode'][0]].ansible_host ~ ':' ~ hdfs_namenode_port,
+      'ui': 'http://' ~ hostvars[groups['hdfs_namenode'][0]].ansible_host ~ ':' ~ hdfs_ui_port}] }}

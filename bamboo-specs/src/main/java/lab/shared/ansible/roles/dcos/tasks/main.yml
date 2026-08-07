@@ -1,7 +1,7 @@
 ---
 - name: Bootstrap DC/OS on mgmt[0] (genconf + serve)
   ansible.builtin.import_tasks: bootstrap.yml
-  when: inventory_hostname == groups['mgmt'][0]
+  when: inventory_hostname == groups['management'][0]
 
 - name: Install DC/OS node role
   ansible.builtin.import_tasks: node.yml

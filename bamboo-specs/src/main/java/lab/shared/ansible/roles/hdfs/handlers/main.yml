@@ -6,11 +6,11 @@
     name: hdfs-namenode
     state: restarted
     daemon_reload: true
-  when: inventory_hostname in groups['namenode']
+  when: inventory_hostname in groups['hdfs_namenode']
 
 - name: Restart hdfs datanode
   ansible.builtin.systemd:
     name: hdfs-datanode
     state: restarted
     daemon_reload: true
-  when: inventory_hostname in groups['datanode']
+  when: inventory_hostname in groups['hdfs_datanode']

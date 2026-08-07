@@ -19,4 +19,4 @@
   ansible.builtin.include_tasks: fluentbit.yml
   when:
     - "'opensearch' in (addons | default('')).split(',')"
-    - inventory_hostname not in groups['opensearch'] | default([])
+    - inventory_hostname not in groups['opensearch_master'] | default([])

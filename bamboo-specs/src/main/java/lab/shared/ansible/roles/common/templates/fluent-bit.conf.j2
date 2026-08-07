@@ -12,7 +12,7 @@
 [OUTPUT]
     Name                 opensearch
     Match                *
-    Host                 {{ hostvars[groups['opensearch'][0]].ansible_host }}
+    Host                 {{ hostvars[groups['opensearch_master'][0]].ansible_host }}
     Port                 {{ common_fluentbit_opensearch_port }}
     Logstash_Format      On
     Logstash_Prefix      {{ common_fluentbit_index }}

@@ -1,4 +1,4 @@
 ---
 - name: Join cluster
-  ansible.builtin.command: "{{ hostvars[groups['mgmt'][0]].k8s_join_command }}"
+  ansible.builtin.command: "{{ hostvars[groups['management'][0]].k8s_join_command }}"
   args: { creates: /etc/kubernetes/kubelet.conf }

@@ -4,19 +4,19 @@
 
 - name: Initialize control plane
   ansible.builtin.import_tasks: init.yml
-  when: inventory_hostname == groups['mgmt'][0]
+  when: inventory_hostname == groups['management'][0]
 
 - name: Join worker to cluster
   ansible.builtin.import_tasks: join.yml
-  when: inventory_hostname != groups['mgmt'][0]
+  when: inventory_hostname != groups['management'][0]
 
 - name: Install k9s on the control plane
   ansible.builtin.import_tasks: k9s.yml
-  when: inventory_hostname in groups['mgmt']
+  when: inventory_hostname in groups['management']
 
 - name: Install the default StorageClass
   ansible.builtin.import_tasks: storage.yml
-  when: inventory_hostname == groups['mgmt'][0]
+  when: inventory_hostname == groups['management'][0]
 
 # The role declares what it installed; site.yml's last play collects the facts
 # and provision.py copies them into the cluster's info file. Version is omitted

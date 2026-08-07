@@ -20,7 +20,7 @@
       when: cluster_type == "dcos"
 
 - name: Keycloak on the cluster
-  hosts: mgmt[0]
+  hosts: management[0]
   become: true
   roles:
     - role: keycloak
@@ -34,7 +34,7 @@
       when: "'hdfs' in (addons | default('')).split(',')"
 
 - name: OpenSearch on the opensearch nodes
-  hosts: opensearch
+  hosts: opensearch_nodes
   become: true
   roles:
     - role: opensearch
@@ -43,12 +43,12 @@
 # Hand the component facts the roles set back to provision.py, which renders
 # them into cluster_registered/<cluster>_cluster_info.yml. forgelab_components
 # is set with set_fact, which is host-scoped, and roles run on different host
-# groups (k8s on mgmt+compute, keycloak on mgmt[0], hdfs on hdfs_nodes,
-# opensearch on opensearch) -- so no single host has the full picture.
-# Aggregate across every host in the (naturally sorted, so stable) inventory
-# before writing.
+# groups (k8s on management+compute, keycloak on management[0], hdfs on
+# hdfs_nodes, opensearch on opensearch_nodes) -- so no single host has the full
+# picture. Aggregate across every host in the (naturally sorted, so stable)
+# inventory before writing.
 - name: Record installed components
-  hosts: mgmt[0]
+  hosts: management[0]
   gather_facts: false
   become: false
   tasks:
