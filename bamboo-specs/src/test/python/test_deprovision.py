@@ -45,12 +45,12 @@ def lab(tmp_path, monkeypatch):
     monkeypatch.setattr(deprovision, "terraform", fake_tf)
     monkeypatch.setattr(deprovision, "multipass", fake_mp)
     monkeypatch.setattr(deprovision.proc, "require_tools", lambda *_: None)
-    monkeypatch.setattr(deprovision.tfvars_mod, "resolve", lambda _: tmp_path / "x.tfvars")
     registry_dir = tmp_path / "cluster_registered"
     registry_dir.mkdir()
     monkeypatch.setattr(deprovision.paths, "INV_DIR", inv_dir)
     monkeypatch.setattr(deprovision.sshconf.paths, "SSH_CONF_DIR", ssh_dir)
     monkeypatch.setattr(deprovision.paths, "REGISTRY_DIR", registry_dir)
+    monkeypatch.setattr(deprovision.paths, "TF_DIR", tmp_path / "terraform")
 
     return type(
         "Lab",
@@ -62,6 +62,7 @@ def lab(tmp_path, monkeypatch):
             "inv_dir": inv_dir,
             "ssh_dir": ssh_dir,
             "registry_dir": registry_dir,
+            "tf_dir": tmp_path / "terraform",
         },
     )
 
@@ -92,9 +93,9 @@ def test_skips_destroy_when_no_workspace_exists(lab, capsys):
 
 
 def test_sweeps_leftover_vms_after_terraform(lab):
-    lab.mp.vms = [Node("lab1-mgmt-1", []), Node("other-mgmt-1", [])]
+    lab.mp.vms = [Node("lab1-management-1", []), Node("other-management-1", [])]
     deprovision.main(["lab1"])
-    assert ("delete_purge", ("lab1-mgmt-1",)) in lab.calls
+    assert ("delete_purge", ("lab1-management-1",)) in lab.calls
 
 
 def test_does_not_sweep_when_the_backend_is_clean(lab):
@@ -103,7 +104,7 @@ def test_does_not_sweep_when_the_backend_is_clean(lab):
 
 
 def test_removes_the_generated_inventory_and_ssh_config(lab):
-    (lab.inv_dir / "lab1.ini").write_text("[mgmt]\n")
+    (lab.inv_dir / "lab1.ini").write_text("[management]\n")
     (lab.ssh_dir / "lab1.conf").write_text("Host lab1-mgmt-1\n")
     deprovision.main(["lab1"])
     assert not (lab.inv_dir / "lab1.ini").exists()
@@ -135,3 +136,29 @@ def test_removes_the_credentials_file(lab, tmp_path, monkeypatch):
     deprovision.credentials.write("lab1", {"keycloak_admin_password": "hunter22"})
     deprovision.main(["lab1"])
     assert not deprovision.credentials.path("lab1").exists()
+
+
+def test_destroys_with_the_generated_var_file_when_it_exists(lab):
+    generated = lab.tf_dir / ".generated"
+    generated.mkdir(parents=True)
+    varfile = generated / "lab1.tfvars.json"
+    varfile.write_text('{"cluster_name": "lab1", "nodes": {}}\n')
+    deprovision.main(["lab1"])
+    destroy = next(c for c in lab.calls if c[0] == "destroy")
+    assert f"-var-file={varfile}" in destroy
+
+
+def test_destroys_with_an_empty_nodes_map_when_the_var_file_is_gone(lab):
+    """State, not variables, decides what destroy removes — so a teardown never
+    needs the cluster's config file, which may have been renamed or deleted."""
+    deprovision.main(["lab1"])
+    destroy = next(c for c in lab.calls if c[0] == "destroy")
+    assert "nodes={}" in destroy
+
+
+def test_removes_the_generated_var_file(lab):
+    generated = lab.tf_dir / ".generated"
+    generated.mkdir(parents=True)
+    (generated / "lab1.tfvars.json").write_text('{"nodes": {}}\n')
+    deprovision.main(["lab1"])
+    assert not (generated / "lab1.tfvars.json").exists()
