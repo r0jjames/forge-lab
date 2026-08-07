@@ -21,6 +21,11 @@ from .proc import die
 
 _KEY_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_-]*$")
 
+# A cluster_nodes key becomes the VM's name verbatim, and multipass rejects an
+# instance name that is not alphanumeric-with-dashes. Validate it here, where
+# the error can name the file, rather than at `terraform apply` ten minutes in.
+_ROLE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+
 
 def _fail(source, lineno, message):
     die(f"{source}:{lineno}: {message}")
@@ -133,19 +138,19 @@ class NodeSpec(NamedTuple):
     disk: str
 
 
-def _at(source, dotted, message):
-    die(f"{source}: {message} ({dotted})" if dotted else f"{source}: {message}")
+def _at(source, message):
+    die(f"{source}: {message}")
 
 
 def _mapping(value, source, dotted):
     if not isinstance(value, dict):
-        _at(source, "", f"'{dotted}' must be a block of keys, not a value")
+        _at(source, f"'{dotted}' must be a block of keys, not a value")
     return value
 
 
 def _require(parent, key, source, dotted):
     if key not in parent:
-        _at(source, "", f"missing required key '{dotted}'")
+        _at(source, f"missing required key '{dotted}'")
     return parent[key]
 
 
@@ -153,34 +158,37 @@ def _reject_unknown(parent, allowed, source, prefix):
     for key in parent:
         if key not in allowed:
             dotted = f"{prefix}.{key}" if prefix else key
-            _at(source, "", f"unknown key '{dotted}'; known: {' '.join(allowed)}")
+            _at(source, f"unknown key '{dotted}'; known: {' '.join(allowed)}")
 
 
 def _int(parent, key, source, dotted, minimum):
     raw = _require(parent, key, source, dotted)
     if not isinstance(raw, str) or not raw.isdigit():
-        _at(source, "", f"'{dotted}' must be a whole number (got {raw!r})")
+        _at(source, f"'{dotted}' must be a whole number (got {raw!r})")
     number = int(raw)
     if number < minimum:
-        _at(source, "", f"'{dotted}' {key} must be at least {minimum} (got {number})")
+        _at(source, f"'{dotted}' {key} must be at least {minimum} (got {number})")
     return number
 
 
 def _size(parent, key, source, dotted):
     raw = _require(parent, key, source, dotted)
     if not isinstance(raw, str) or not _SIZE_RE.match(raw):
-        _at(source, "", f"'{dotted}' must look like 4G or 512M (got {raw!r})")
+        _at(source, f"'{dotted}' must look like 4G or 512M (got {raw!r})")
     return raw
 
 
 def _bool(parent, key, source, dotted):
     raw = _require(parent, key, source, dotted)
     if raw not in _BOOLS:
-        _at(source, "", f"'{dotted}' must be true or false (got {raw!r})")
+        _at(source, f"'{dotted}' must be true or false (got {raw!r})")
     return _BOOLS[raw]
 
 
 def _node_spec(block, role, source, dotted):
+    if not _ROLE_RE.match(role):
+        _at(source, f"role {role!r} must match ^[a-z][a-z0-9-]*$ — it becomes "
+                    f"the VM name {{cluster}}-{role}-<n>")
     _mapping(block, source, dotted)
     _reject_unknown(block, NODE_KEYS, source, dotted)
     return NodeSpec(
@@ -261,30 +269,30 @@ def from_text(text: str, source: str) -> ClusterConfig:
     _reject_unknown(cluster, ("type",), source, "cluster")
     cluster_type = _require(cluster, "type", source, "cluster.type")
     if cluster_type not in CLUSTER_TYPES:
-        _at(source, "", f"cluster.type must be one of [{' '.join(CLUSTER_TYPES)}] "
-                        f"(got {cluster_type!r})")
+        _at(source, f"cluster.type must be one of [{' '.join(CLUSTER_TYPES)}] "
+                    f"(got {cluster_type!r})")
 
     nodes = _mapping(
         _require(data, "cluster_nodes", source, "cluster_nodes"), source, "cluster_nodes"
     )
     if CONTROL_ROLE not in nodes:
-        _at(source, "", f"cluster_nodes must define '{CONTROL_ROLE}' — the k8s and "
-                        f"dcos roles take their control node from it")
+        _at(source, f"cluster_nodes must define '{CONTROL_ROLE}' — the k8s and "
+                    f"dcos roles take their control node from it")
     cluster_roles = [
         _node_spec(block, role, source, f"cluster_nodes.{role}")
         for role, block in nodes.items()
     ]
     control = next(s for s in cluster_roles if s.role == CONTROL_ROLE)
     if control.count < 1:
-        _at(source, "", f"cluster_nodes.{CONTROL_ROLE}.count must be at least 1")
+        _at(source, f"cluster_nodes.{CONTROL_ROLE}.count must be at least 1")
 
     technologies = _mapping(data.get("technologies", {}), source, "technologies")
     enabled, tech_roles = [], {}
     for name, block in technologies.items():
         dotted = f"technologies.{name}"
         if name not in TECHNOLOGIES:
-            _at(source, "", f"unknown technology {name!r}; "
-                            f"known: {' '.join(TECHNOLOGIES)}")
+            _at(source, f"unknown technology {name!r}; "
+                        f"known: {' '.join(TECHNOLOGIES)}")
         _mapping(block, source, dotted)
         _reject_unknown(block, ("enabled", "nodes"), source, dotted)
         if not _bool(block, "enabled", source, f"{dotted}.enabled"):
@@ -294,18 +302,21 @@ def from_text(text: str, source: str) -> ClusterConfig:
         enabled.append(name)
         if name in NODELESS_TECHNOLOGIES:
             if "nodes" in block:
-                _at(source, "", f"{name} runs on the cluster and declares no nodes")
+                _at(source, f"{name} runs on the cluster and declares no nodes")
             continue
         if "nodes" not in block:
-            _at(source, "", f"{dotted} must declare nodes when enabled")
+            _at(source, f"{dotted} must declare nodes when enabled")
         node_blocks = _mapping(block["nodes"], source, f"{dotted}.nodes")
         _reject_unknown(node_blocks, TECHNOLOGY_NODES[name], source, f"{dotted}.nodes")
         if not node_blocks:
-            _at(source, "", f"{dotted} must declare nodes when enabled")
+            _at(source, f"{dotted} must declare nodes when enabled")
         tech_roles[name] = [
             _node_spec(spec, f"{name}-{node}", source, f"{dotted}.nodes.{node}")
             for node, spec in node_blocks.items()
         ]
+        if sum(spec.count for spec in tech_roles[name]) < 1:
+            _at(source, f"{dotted} is enabled but every node count is 0 — "
+                        f"set enabled: false to park it instead")
 
     # VM names are <cluster>-<role>-<n> and provision.py finds a role's VMs by
     # that name prefix, so one role name being a prefix of another makes their
@@ -315,17 +326,29 @@ def from_text(text: str, source: str) -> ClusterConfig:
     built = [spec.role for spec in cluster_roles]
     for name in enabled:
         built += [spec.role for spec in tech_roles.get(name, [])]
+
+    # A cluster_nodes key and a technology's node can name the exact same role
+    # (e.g. cluster_nodes.hdfs-namenode alongside technologies.hdfs.nodes.namenode).
+    # The prefix guard below deliberately skips self-comparison (other != role),
+    # which also skips this case, so catch an exact duplicate first.
+    seen = set()
+    for role in built:
+        if role in seen:
+            _at(source, f"role {role!r} is declared twice — a cluster_nodes key "
+                        f"and a technology's node cannot name the same role")
+        seen.add(role)
+
     for role in built:
         for other in built:
             if other != role and other.startswith(f"{role}-"):
-                _at(source, "", f"role {other!r} starts with role {role!r}, so their "
-                                f"VM names collide — rename one")
+                _at(source, f"role {other!r} starts with role {role!r}, so their "
+                            f"VM names collide — rename one")
 
     if "hdfs" in enabled:
         namenodes = [s for s in tech_roles["hdfs"] if s.role == "hdfs-namenode"]
         if len(namenodes) != 1 or namenodes[0].count != 1:
-            _at(source, "", "hdfs has exactly one NameNode: "
-                            "technologies.hdfs.nodes.namenode.count must be 1")
+            _at(source, "hdfs has exactly one NameNode: "
+                        "technologies.hdfs.nodes.namenode.count must be 1")
 
     return ClusterConfig(source, cluster_type, cluster_roles, tech_roles, enabled)
 

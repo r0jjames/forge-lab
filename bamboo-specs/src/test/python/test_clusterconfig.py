@@ -80,6 +80,11 @@ def test_errors_name_the_file_and_the_line():
         clusterconfig.parse("a:\n  b: 1\n  - two\n", "c.yaml")
 
 
+def test_rejects_a_key_that_does_not_match_the_key_pattern():
+    with pytest.raises(LabError, match=r"invalid key '9bad'"):
+        clusterconfig.parse("9bad: 1\n", "c.yaml")
+
+
 CONFIG = """
 cluster:
   type: k8s
@@ -374,6 +379,66 @@ def test_a_disabled_technology_cannot_cause_a_collision():
         "  compute:", "  opensearch:"
     )
     assert "opensearch" in [spec.role for spec in config(text).roles()]
+
+
+def test_allows_roles_where_neither_is_a_dashed_prefix_of_the_other():
+    """`data` and `database` share letters but `database` does not start with
+    `data-`, so `lab1-data-1` and `lab1-database-1` cannot collide. A bare
+    `startswith(role)` guard (without the trailing dash) would wrongly reject
+    this, since 'database'.startswith('data') is True."""
+    text = (
+        "cluster:\n"
+        "  type: k8s\n"
+        "cluster_nodes:\n"
+        "  management:\n"
+        "    count: 1\n"
+        "    cpu: 2\n"
+        "    memory: 4G\n"
+        "    disk: 20G\n"
+        "  data:\n"
+        "    count: 1\n"
+        "    cpu: 2\n"
+        "    memory: 4G\n"
+        "    disk: 20G\n"
+        "  database:\n"
+        "    count: 1\n"
+        "    cpu: 2\n"
+        "    memory: 4G\n"
+        "    disk: 20G\n"
+    )
+    roles = [spec.role for spec in clusterconfig.from_text(text, "c.yaml").roles()]
+    assert "data" in roles
+    assert "database" in roles
+
+
+def test_rejects_a_cluster_node_role_that_exactly_matches_a_technology_role():
+    """A `cluster_nodes` key and a technology's node cannot name the same role:
+    the technology's spec would silently overwrite the cluster node's sizing,
+    and the host would land in both k8s_nodes and the technology's group."""
+    text = CONFIG.replace("  compute:", "  hdfs-namenode:")
+    with pytest.raises(LabError, match=r"role 'hdfs-namenode' is declared twice"):
+        config(text)
+
+
+def test_rejects_a_cluster_node_role_with_characters_multipass_would_reject():
+    """A `cluster_nodes` key becomes the VM name verbatim, and multipass
+    rejects an instance name that is not alphanumeric-with-dashes."""
+    text = CONFIG.replace("  compute:", "  my_node:")
+    with pytest.raises(LabError, match=r"role 'my_node' must match \^\[a-z\]\[a-z0-9-\]\*\$"):
+        config(text)
+
+
+def test_rejects_an_enabled_technology_whose_every_node_count_is_zero():
+    """An enabled technology that builds zero VMs still passes terraform, then
+    dies deep into the ansible install against an empty inventory group."""
+    text = CONFIG.replace(
+        "  opensearch:\n    enabled: false", "  opensearch:\n    enabled: true"
+    ).replace("      master:\n        count: 3", "      master:\n        count: 0")
+    with pytest.raises(
+        LabError,
+        match=r"technologies.opensearch is enabled but every node count is 0",
+    ):
+        config(text)
 
 
 # --- load() ---------------------------------------------------------------
