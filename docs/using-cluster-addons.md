@@ -405,15 +405,34 @@ sudo -u splunk /opt/splunk/bin/splunk list licenses
 sudo -u splunk /opt/splunk/bin/splunk show cluster-bundle-status
 ```
 
+Pass credentials through `SPLUNK_USERNAME` / `SPLUNK_PASSWORD` in the
+environment rather than `-auth admin:...`, which keeps the password out of
+`ps`:
+
+```
+PASSWORD=$(grep splunk_admin_password ~/.forgelab/<cluster>-credentials.yml | cut -d'"' -f2)
+sudo -u splunk env SPLUNK_USERNAME=admin SPLUNK_PASSWORD="$PASSWORD" \
+  /opt/splunk/bin/splunk list cluster-peers
+```
+
 The forwarder runs as `root` instead (it reads `/var/log/pods`, which
 kubelet keeps root-only), so on any other node:
 
 ```
-sudo /opt/splunkforwarder/bin/splunk list forward-server
+sudo env SPLUNK_USERNAME=admin SPLUNK_PASSWORD="$PASSWORD" \
+  /opt/splunkforwarder/bin/splunk list forward-server
 ```
 
-Both accept credentials through `SPLUNK_USERNAME` / `SPLUNK_PASSWORD` in the
-environment, which keeps the password out of `ps`.
+```
+Active forwards:
+	192.168.252.128:9997
+	192.168.252.129:9997
+```
+
+Both indexers listed as *active* is what healthy looks like. Note the
+forwarder has **no management port** — Splunk ships it disabled on the
+Universal Forwarder — so there is no `:8089` to curl on those hosts, and its
+CLI is the only way in.
 
 ### The licence
 

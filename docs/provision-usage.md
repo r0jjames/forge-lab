@@ -388,9 +388,17 @@ curl -sk -u "admin:$PASSWORD" \
 ```
 
 A non-zero `count` means events from other VMs reached the indexers. Zero
-with a healthy cluster points at the forwarders: check one with
-`ssh <cluster>-management-1 "sudo /opt/splunkforwarder/bin/splunk list forward-server"`,
-which should list both indexers as active forwards.
+with a healthy cluster points at the forwarders. Check one — the forwarder
+has no management port to curl, so this goes through its CLI:
+
+```
+ssh <cluster>-management-1 \
+  "sudo env SPLUNK_USERNAME=admin SPLUNK_PASSWORD='$PASSWORD' /opt/splunkforwarder/bin/splunk list forward-server"
+```
+
+Both indexers should appear under `Active forwards`. Anything under
+`Configured but inactive forwards` means the forwarder knows the address but
+cannot deliver to it.
 
 Per-node service, when an instance is missing:
 
