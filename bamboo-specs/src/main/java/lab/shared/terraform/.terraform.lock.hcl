@@ -4,6 +4,7 @@
 provider "registry.terraform.io/hashicorp/local" {
   version = "2.9.0"
   hashes = [
+    "h1:9rBZCMNpxKwMlRbWH2QpwD3kqUCAejdOZQ/aiiDObXQ=",
     "h1:m24fjcInWvTVZ1XSo2MaNuKPe+X/gfG8SIi09rA7a7M=",
     "zh:0baa4566cf77f1ff52f4293d1c8536202dd23edc197c3196413a28343c3ac3a0",
     "zh:16b5559c3c07088ddad11a9bb9e9c0799999363c2958e9a5be2bcbbf2cd9ca64",
@@ -25,6 +26,7 @@ provider "registry.terraform.io/larstobi/multipass" {
   version     = "1.4.3"
   constraints = "~> 1.4"
   hashes = [
+    "h1:8+DCFMNz4q46SgV198JKCiwh0QeZKl/8rwSxrMWim0E=",
     "h1:WLOJmLruXetc6+d2M8t8hcBBuZLYyylw3bY18fPojEU=",
     "zh:20fd66d1f4f2c4b1a3cfedd3642ac479c6db52fd030ca5267ddb53dfe3bbbc68",
     "zh:29aa7d8533e3b586670c055a6f8820c50be853ad8cd8f02b9e6541b8ac6bdaf1",

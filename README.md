@@ -7,6 +7,8 @@ DevOps practice.
 
 Design source of truth: [`docs/superpowers/specs/2026-07-23-forge-lab-design.md`](docs/superpowers/specs/2026-07-23-forge-lab-design.md).
 
+First run on a new machine (macOS or Ubuntu): [`SETUP.md`](SETUP.md).
+
 Day-to-day guides: [`docs/provision-usage.md`](docs/provision-usage.md) for
 running the Provision plan and checking what installed;
 [`docs/using-cluster-addons.md`](docs/using-cluster-addons.md) for using
@@ -50,7 +52,7 @@ Mac host (32Gi+)
 │   ├── ns ci: bamboo-server   (Atlassian Helm chart, timebomb 24h license)
 │   └── ns ci: postgres        (Bitnami chart, PVC)
 ├── bamboo-agent               (plain process on Mac — Phase 1)
-│   └── has: JDK 17, terraform, ansible, multipass CLI (direct)
+│   └── has: JDK 21, terraform, ansible, multipass CLI (direct)
 └── Multipass VMs              (created by pipelines only)
     ├── <name>-management-1..N
     ├── <name>-compute-1..N
@@ -97,7 +99,8 @@ Install on the Mac host before starting:
 - **ansible** — installs k8s/dcos onto provisioned VMs.
 - **multipass** — creates the local VMs pipelines target.
 - **jq** — used by scripts to parse JSON (Terraform output, `multipass list --format json`, etc).
-- **JDK 17 + maven** — builds and validates Bamboo Specs (`bamboo-specs/`).
+- **JDK 21 + maven** — builds and validates Bamboo Specs (`bamboo-specs/`),
+  and runs the Bamboo 12.1.8 agent installer, which needs 21.
 - **shellcheck** and **ansible-lint** — static checks, both part of `make lint`.
 
 Quick check that everything is on `PATH`:
@@ -106,7 +109,7 @@ Quick check that everything is on `PATH`:
 for bin in kubectl helm terraform ansible ansible-lint multipass jq mvn shellcheck; do
   command -v "$bin" >/dev/null || echo "MISSING: $bin"
 done
-java -version   # expect 17.x
+java -version   # expect 21.x
 ```
 
 Rancher Desktop must be **running** (with Kubernetes enabled) before `make up`.
